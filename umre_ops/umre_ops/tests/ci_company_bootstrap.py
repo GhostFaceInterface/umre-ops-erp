@@ -49,8 +49,9 @@ def ensure_at_least_one_company() -> str | None:
 	templates = get_charts_for_country(country)
 	chart = templates[0] if templates else "Standard"
 
-	fy_start = "2025-04-01"
-	fy_end = "2026-03-31"
+	# Avoid FY ranges that overlap ERPNext/umre test fixtures (e.g. _Test Fiscal Year 2025, 2013, …).
+	fy_start = "2030-01-01"
+	fy_end = "2030-12-31"
 	fy_name = get_fy_details(fy_start, fy_end)
 	if not frappe.db.exists("Fiscal Year", fy_name):
 		frappe.get_doc(
