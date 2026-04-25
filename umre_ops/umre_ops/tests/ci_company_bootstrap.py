@@ -33,8 +33,17 @@ def ensure_at_least_one_company() -> str | None:
 	except ImportError:
 		frappe.throw("ERPNext must be installed to create a Company document")
 
-	# Same pattern as ERPNext's create_fiscal_year_and_company, but perpetual inventory off so
-	# default warehouses (and Warehouse Type fixtures like "Transit") are not required on CI.
+	# `Company.create_default_warehouses` always creates a "Goods In Transit" warehouse
+	# with warehouse_type=Transit; fresh sites may not include that `Warehouse Type` yet.
+	if not frappe.db.exists("Warehouse Type", "Transit"):
+		frappe.get_doc(
+			{
+				"doctype": "Warehouse Type",
+				"name": "Transit",
+				"description": "In transit (CI / test site)",
+			}
+		).insert(ignore_permissions=True)
+
 	country = "India"
 	currency = "INR"
 	templates = get_charts_for_country(country)

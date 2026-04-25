@@ -95,7 +95,7 @@ jobs:
           bench --site test_site install-app erpnext
           bench --site test_site install-app umre_ops
           bench --site test_site migrate
-          bench --site test_site execute umre_ops.umre_ops.tests.ci_company_bootstrap.ensure_at_least_one_company
+          bench --site test_site execute 'umre_ops.umre_ops.tests.ci_company_bootstrap.ensure_at_least_one_company'
           bench build
         env:
           CI: 'Yes'
