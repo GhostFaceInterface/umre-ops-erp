@@ -7,3 +7,6 @@ umre_ops.patches.reconcile_schema
 # Patches added in this section will be executed after doctypes are migrated
 umre_ops.patches.reconcile_tour_hotel_bir_column
 umre_ops.patches.create_accounting_custom_fields
+umre_ops.patches.booking_status_manual_cost
+umre_ops.patches.repair_imported_booking_status_costs
+umre_ops.patches.repair_imported_booking_status

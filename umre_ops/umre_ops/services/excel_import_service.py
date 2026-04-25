@@ -11,6 +11,7 @@ from datetime import date, datetime
 from typing import Any
 
 import frappe
+from frappe import _
 from frappe.utils import flt, getdate, now, nowdate
 from frappe.utils.xlsxutils import read_xlsx_file_from_attached_file
 
@@ -252,7 +253,7 @@ def normalize_city(value: Any) -> str | None:
 	key = _city_compare_key(value)
 	if key in CITY_LOOKUP:
 		return CITY_LOOKUP[key]
-	frappe.throw(f"İl adı eşleşmedi: {value!r}")
+	frappe.throw(_("İl adı eşleşmedi: {0}").format(repr(value)))
 
 
 def _alias_lookup() -> dict[str, str]:
@@ -266,7 +267,7 @@ def _alias_lookup() -> dict[str, str]:
 def _read_rows(import_doc) -> tuple[list[str], list[dict[str, Any]]]:
 	raw_rows = read_xlsx_file_from_attached_file(file_url=import_doc.import_file)
 	if not raw_rows:
-		frappe.throw("Excel file is empty.")
+		frappe.throw(_("Excel file is empty."))
 
 	header = raw_rows[0]
 	lookup = _alias_lookup()
@@ -280,7 +281,7 @@ def _read_rows(import_doc) -> tuple[list[str], list[dict[str, Any]]]:
 
 	missing = [col for col in REQUIRED_COLUMNS if col not in index_by_logical]
 	if missing:
-		frappe.throw("Missing required Excel columns: " + ", ".join(missing))
+		frappe.throw(_("Missing required Excel columns: {0}").format(", ".join(missing)))
 
 	rows = []
 	for raw in raw_rows[1:]:
@@ -386,7 +387,7 @@ def _upsert_payment_row(booking, row: dict[str, Any], import_name: str, row_numb
 def _process_row(row: dict[str, Any], tur_name: str, summary: ImportSummary, row_number: int, dry_run: bool, import_name: str) -> dict[str, Any]:
 	tc = normalize_tc(row.get("TC KİMLİK NO"))
 	if not tc:
-		frappe.throw("Missing TC KİMLİK NO")
+		frappe.throw(_("Missing TC KİMLİK NO"))
 
 	log = {
 		"row_number": row_number,
@@ -447,7 +448,7 @@ def run_import(docname: str, *, dry_run: bool) -> dict:
 	import_doc = frappe.get_doc(DOCTYPE_IMPORT, docname)
 	import_doc.check_permission("write")
 	if not frappe.db.exists("Umre Tour", import_doc.target_tour):
-		frappe.throw("Target Umre Tour does not exist.")
+		frappe.throw(_("Target Umre Tour does not exist."))
 
 	_, rows = _read_rows(import_doc)
 	summary = ImportSummary(total_rows=len(rows))

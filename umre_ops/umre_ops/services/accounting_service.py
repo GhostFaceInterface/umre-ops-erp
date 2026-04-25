@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import frappe
+from frappe import _
 from frappe.utils import flt, nowdate
 
 from umre_ops.umre_ops.services.cost_center_service import resolve_booking_cost_center
@@ -29,7 +30,7 @@ class PostResult:
 def _require_company(booking) -> str:
 	company = getattr(booking, "company", None) or get_account_mapping(None).company
 	if not company:
-		frappe.throw("Company is required to post accounting entries.")
+		frappe.throw(_("Company is required to post accounting entries."))
 	return company
 
 
@@ -57,18 +58,20 @@ def post_booking_receipt_journal_entry(
 	cc = resolve_booking_cost_center(booking)
 	if not cc:
 		frappe.throw(
-			"Could not resolve a leaf Cost Center for this booking. "
-			"Ensure the tour code matches an existing leaf Cost Center (e.g. TUR-2026-01) "
-			"or set a non-group fallback Cost Center in Umre Ops Settings."
+			_(
+				"Could not resolve a leaf Cost Center for this booking. "
+				"Ensure the tour code matches an existing leaf Cost Center (e.g. TUR-2026-01) "
+				"or set a non-group fallback Cost Center in Umre Ops Settings."
+			)
 		)
 	income_account = mapping.income_account
 	if not income_account:
-		frappe.throw("Umre Ops Settings.income_account is required to post receipts.")
+		frappe.throw(_("Umre Ops Settings.income_account is required to post receipts."))
 
 	posting_date = posting_date or nowdate()
 	amount = flt(amount)
 	if amount <= 0:
-		frappe.throw("Receipt amount must be > 0")
+		frappe.throw(_("Receipt amount must be > 0"))
 
 	request_payload = {
 		"booking": booking_name,
@@ -161,14 +164,14 @@ def post_booking_receipt_payment_entry(
 	company = _require_company(booking)
 	mapping = get_account_mapping(getattr(booking, "company", None))
 	if not getattr(booking, "customer", None):
-		frappe.throw("Booking.customer is required to post Payment Entry receipts.")
+		frappe.throw(_("Booking.customer is required to post Payment Entry receipts."))
 	if not mapping.receivable_account:
-		frappe.throw("Umre Ops Settings.receivable_account is required to post Payment Entry receipts.")
+		frappe.throw(_("Umre Ops Settings.receivable_account is required to post Payment Entry receipts."))
 
 	posting_date = posting_date or nowdate()
 	amount = flt(amount)
 	if amount <= 0:
-		frappe.throw("Receipt amount must be > 0")
+		frappe.throw(_("Receipt amount must be > 0"))
 
 	request_payload = {
 		"booking": booking_name,
@@ -256,9 +259,11 @@ def post_booking_costs_journal_entry(
 	cc = resolve_booking_cost_center(booking)
 	if not cc:
 		frappe.throw(
-			"Could not resolve a leaf Cost Center for this booking. "
-			"Ensure the tour code matches an existing leaf Cost Center (e.g. TUR-2026-01) "
-			"or set a non-group fallback Cost Center in Umre Ops Settings."
+			_(
+				"Could not resolve a leaf Cost Center for this booking. "
+				"Ensure the tour code matches an existing leaf Cost Center (e.g. TUR-2026-01) "
+				"or set a non-group fallback Cost Center in Umre Ops Settings."
+			)
 		)
 	posting_date = posting_date or nowdate()
 
@@ -274,14 +279,14 @@ def post_booking_costs_journal_entry(
 		if not amt:
 			continue
 		if not acc:
-			frappe.throw(f"Missing expense account mapping for {key}. Configure Umre Ops Settings.")
+			frappe.throw(_("Missing expense account mapping for {0}. Configure Umre Ops Settings.").format(key))
 		lines.append({"account": acc, "debit_in_account_currency": amt, "cost_center": cc})
 		total += amt
 
 	kms = flt(getattr(booking, "kms", 0) or 0)
 	if kms:
 		if not mapping.commission_expense_account:
-			frappe.throw("Missing commission_expense_account mapping in Umre Ops Settings.")
+			frappe.throw(_("Missing commission_expense_account mapping in Umre Ops Settings."))
 		lines.append(
 			{
 				"account": mapping.commission_expense_account,
@@ -293,7 +298,7 @@ def post_booking_costs_journal_entry(
 
 	total = flt(total)
 	if total <= 0:
-		frappe.throw("No operational costs found to post for this booking.")
+		frappe.throw(_("No operational costs found to post for this booking."))
 
 	request_payload = {
 		"booking": booking_name,

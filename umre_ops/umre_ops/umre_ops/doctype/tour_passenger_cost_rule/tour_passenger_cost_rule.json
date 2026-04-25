@@ -33,15 +33,15 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Yolcu Tipi",
-   "options": "Normal\n\u00c7ocuk\nBebek",
+   "options": "Normal\nÇocuk\nBebek",
    "reqd": 1
   },
   {
    "fieldname": "expense_component",
    "fieldtype": "Select",
    "in_list_view": 1,
-   "label": "Expense component",
-   "options": "U\u00e7ak\nOtel\nVize\nDi\u011fer",
+   "label": "Gider Bileşeni",
+   "options": "Uçak\nOtel\nVize\nDiğer",
    "reqd": 1
   },
   {

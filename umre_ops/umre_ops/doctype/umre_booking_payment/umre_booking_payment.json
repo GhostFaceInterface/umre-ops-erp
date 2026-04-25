@@ -22,71 +22,72 @@
   {
    "fieldname": "posting_date",
    "fieldtype": "Date",
-   "label": "Posting Date",
+   "label": "İşlem Tarihi",
    "reqd": 1
   },
   {
    "fieldname": "amount",
    "fieldtype": "Currency",
-   "label": "Amount",
-   "reqd": 1
+   "label": "Tutar",
+   "reqd": 1,
+   "options": "currency"
   },
   {
    "fieldname": "currency",
    "fieldtype": "Link",
-   "label": "Currency",
+   "label": "Para Birimi",
    "options": "Currency"
   },
   {
    "fieldname": "mode_of_payment",
    "fieldtype": "Link",
-   "label": "Mode of Payment",
+   "label": "Ödeme Türü",
    "options": "Mode of Payment"
   },
   {
    "fieldname": "reference_no",
    "fieldtype": "Data",
-   "label": "Reference No"
+   "label": "Referans No"
   },
   {
    "fieldname": "reference_date",
    "fieldtype": "Date",
-   "label": "Reference Date"
+   "label": "Referans Tarihi"
   },
   {
    "fieldname": "remarks",
    "fieldtype": "Small Text",
-   "label": "Remarks"
+   "label": "Açıklamalar"
   },
   {
    "fieldname": "external_reference",
    "fieldtype": "Data",
-   "label": "External Reference"
+   "label": "Harici Referans"
   },
   {
    "fieldname": "idempotency_key",
    "fieldtype": "Data",
-   "label": "Idempotency Key",
+   "label": "Tekrarsız İşlem Anahtarı",
    "unique": 1
   },
   {
    "fieldname": "posting_status",
    "fieldtype": "Select",
-   "label": "Posting Status",
+   "label": "Muhasebe Durumu",
    "options": "Draft\nPosted\nFailed\nCancelled",
    "read_only": 1
   },
   {
    "fieldname": "payment_entry",
    "fieldtype": "Link",
-   "label": "Payment Entry",
+   "label": "Ödeme Kaydı",
    "options": "Payment Entry",
    "read_only": 1
   },
   {
    "fieldname": "journal_entry",
    "fieldtype": "Link",
-   "label": "Journal Entry",
+   "label": "Yevmiye Kaydı",
    "options": "Journal Entry",
    "read_only": 1
   }
@@ -103,4 +104,3 @@
  "sort_field": "creation",
  "sort_order": "DESC"
 }
-

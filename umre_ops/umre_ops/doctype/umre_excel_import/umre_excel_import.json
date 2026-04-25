@@ -29,18 +29,18 @@
   {
    "fieldname": "import_setup_section",
    "fieldtype": "Section Break",
-   "label": "Import Setup"
+   "label": "İçe Aktarım Ayarları"
   },
   {
    "fieldname": "import_file",
    "fieldtype": "Attach",
-   "label": "Import File",
+   "label": "İçe Aktarım Dosyası",
    "reqd": 1
   },
   {
    "fieldname": "target_tour",
    "fieldtype": "Link",
-   "label": "Target Tour",
+   "label": "Hedef Tur",
    "options": "Umre Tour",
    "reqd": 1
   },
@@ -49,98 +49,98 @@
    "fieldname": "status",
    "fieldtype": "Select",
    "in_list_view": 1,
-   "label": "Status",
+   "label": "Durum",
    "options": "Draft\nValidated\nQueued\nProcessing\nCompleted\nFailed",
    "read_only": 1
   },
   {
    "fieldname": "job_id",
    "fieldtype": "Data",
-   "label": "Job ID",
+   "label": "İş ID",
    "read_only": 1
   },
   {
    "fieldname": "summary_section",
    "fieldtype": "Section Break",
-   "label": "Summary"
+   "label": "Özet"
   },
   {
    "default": "0",
    "fieldname": "total_rows",
    "fieldtype": "Int",
-   "label": "Total Rows",
+   "label": "Toplam Satır",
    "read_only": 1
   },
   {
    "default": "0",
    "fieldname": "created_umreci",
    "fieldtype": "Int",
-   "label": "Created Umreci",
+   "label": "Oluşturulan Umreci",
    "read_only": 1
   },
   {
    "default": "0",
    "fieldname": "updated_umreci",
    "fieldtype": "Int",
-   "label": "Updated Umreci",
+   "label": "Güncellenen Umreci",
    "read_only": 1
   },
   {
    "default": "0",
    "fieldname": "created_bookings",
    "fieldtype": "Int",
-   "label": "Created Bookings",
+   "label": "Oluşturulan Rezervasyonlar",
    "read_only": 1
   },
   {
    "default": "0",
    "fieldname": "updated_bookings",
    "fieldtype": "Int",
-   "label": "Updated Bookings",
+   "label": "Güncellenen Rezervasyonlar",
    "read_only": 1
   },
   {
    "default": "0",
    "fieldname": "row_errors",
    "fieldtype": "Int",
-   "label": "Row Errors",
+   "label": "Satır Hataları",
    "read_only": 1
   },
   {
    "fieldname": "started_at",
    "fieldtype": "Datetime",
-   "label": "Started At",
+   "label": "Başlangıç Zamanı",
    "read_only": 1
   },
   {
    "fieldname": "completed_at",
    "fieldtype": "Datetime",
-   "label": "Completed At",
+   "label": "Tamamlanma Zamanı",
    "read_only": 1
   },
   {
    "fieldname": "results_section",
    "fieldtype": "Section Break",
-   "label": "Results"
+   "label": "Sonuçlar"
   },
   {
    "fieldname": "dry_run_result",
    "fieldtype": "Code",
-   "label": "Dry Run Result",
+   "label": "Test Çalıştırma Sonucu",
    "options": "JSON",
    "read_only": 1
   },
   {
    "fieldname": "row_log",
    "fieldtype": "Code",
-   "label": "Row Log",
+   "label": "Satır Logu",
    "options": "JSON",
    "read_only": 1
   },
   {
    "fieldname": "error_log",
    "fieldtype": "Long Text",
-   "label": "Error Log",
+   "label": "Hata Logu",
    "read_only": 1
   }
  ],

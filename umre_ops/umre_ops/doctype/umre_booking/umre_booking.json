@@ -11,6 +11,7 @@
   "customer",
   "umreci",
   "tur",
+  "statu",
   "oda_tipi",
   "kimden_geldi",
   "kayit_tarihi",
@@ -19,6 +20,7 @@
   "ic_hat_baglanti",
   "operasyon_ve_odeme_bilgileri_section",
   "ucret",
+  "manual_cost",
   "odenen",
   "kms",
   "odeme_turu",
@@ -37,18 +39,18 @@
   {
    "fieldname": "katilim_temel_bilgileri_section",
    "fieldtype": "Section Break",
-   "label": "Kat\u0131l\u0131m Temel Bilgileri"
+   "label": "Katılım Temel Bilgileri"
   },
   {
    "fieldname": "company",
    "fieldtype": "Link",
-   "label": "Company",
+   "label": "Şirket",
    "options": "Company"
   },
   {
    "fieldname": "customer",
    "fieldtype": "Link",
-   "label": "Customer",
+   "label": "Müşteri",
    "options": "Customer"
   },
   {
@@ -59,6 +61,15 @@
    "reqd": 1
   },
   {
+   "fieldname": "statu",
+   "fieldtype": "Select",
+   "label": "Statü",
+   "options": "UMRECI\nHOCA\nHOCA_ESI\nHOCA_COCUGU\nFREE\nSIRKET_MUDURU\nSIRKET_MUDURU_ESI\nSIRKET_MUDURU_COCUGU",
+   "default": "UMRECI",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
    "fieldname": "kimden_geldi",
    "fieldtype": "Link",
    "label": "Kimden Geldi",
@@ -67,26 +78,27 @@
   {
    "fieldname": "operasyon_ve_odeme_bilgileri_section",
    "fieldtype": "Section Break",
-   "label": "Operasyon ve \u00d6deme Bilgileri"
+   "label": "Operasyon ve Ödeme Bilgileri"
   },
   {
    "fieldname": "oda_tipi",
    "fieldtype": "Select",
    "label": "Oda Tipi",
-   "options": "1 Ki\u015filik\n2 Ki\u015filik\n3 Ki\u015filik\n4 Ki\u015filik",
+   "options": "1 Kişilik\n2 Kişilik\n3 Kişilik\n4 Kişilik",
    "reqd": 1
   },
   {
    "fieldname": "ic_hat_baglanti",
    "fieldtype": "Select",
-   "label": "i\u00e7 hat ba\u011flant\u0131",
-   "options": "Adana\nAd\u0131yaman\nAfyonkarahisar\nA\u011fr\u0131\nAksaray\nAmasya\nAnkara\nAntalya\nArdahan\nArtvin\nAyd\u0131n\nBal\u0131kesir\nBart\u0131n\nBatman\nBayburt\nBilecik\nBing\u00f6l\nBitlis\nBolu\nBurdur\nBursa\n\u00c7anakkale\n\u00c7ank\u0131r\u0131\n\u00c7orum\nDenizli\nDiyarbak\u0131r\nD\u00fczce\nEdirne\nElaz\u0131\u011f\nErzincan\nErzurum\nEski\u015fehir\nGaziantep\nGiresun\nG\u00fcm\u00fc\u015fhane\nHakkari\nHatay\nI\u011fd\u0131r\nIsparta\n\u0130stanbul\n\u0130zmir\nKahramanmara\u015f\nKarab\u00fck\nKaraman\nKars\nKastamonu\nKayseri\nKilis\nK\u0131r\u0131kkale\nK\u0131rklareli\nK\u0131r\u015fehir\nKocaeli\nKonya\nK\u00fctahya\nMalatya\nManisa\nMardin\nMersin\nMu\u011fla\nMu\u015f\nNev\u015fehir\nNi\u011fde\nOrdu\nOsmaniye\nRize\nSakarya\nSamsun\nSiirt\nSinop\nSivas\n\u015eanl\u0131urfa\n\u015e\u0131rnak\nTekirda\u011f\nTokat\nTrabzon\nTunceli\nU\u015fak\nVan\nYalova\nYozgat\nZonguldak",
+   "label": "iç hat bağlantı",
+   "options": "Adana\nAdıyaman\nAfyonkarahisar\nAğrı\nAksaray\nAmasya\nAnkara\nAntalya\nArdahan\nArtvin\nAydın\nBalıkesir\nBartın\nBatman\nBayburt\nBilecik\nBingöl\nBitlis\nBolu\nBurdur\nBursa\nÇanakkale\nÇankırı\nÇorum\nDenizli\nDiyarbakır\nDüzce\nEdirne\nElazığ\nErzincan\nErzurum\nEskişehir\nGaziantep\nGiresun\nGümüşhane\nHakkari\nHatay\nIğdır\nIsparta\nİstanbul\nİzmir\nKahramanmaraş\nKarabük\nKaraman\nKars\nKastamonu\nKayseri\nKilis\nKırıkkale\nKırklareli\nKırşehir\nKocaeli\nKonya\nKütahya\nMalatya\nManisa\nMardin\nMersin\nMuğla\nMuş\nNevşehir\nNiğde\nOrdu\nOsmaniye\nRize\nSakarya\nSamsun\nSiirt\nSinop\nSivas\nŞanlıurfa\nŞırnak\nTekirdağ\nTokat\nTrabzon\nTunceli\nUşak\nVan\nYalova\nYozgat\nZonguldak",
    "reqd": 1
   },
   {
    "fieldname": "kms",
    "fieldtype": "Currency",
-   "label": "KMS"
+   "label": "KMS",
+   "options": "Umre Tour:tur:para_birimi"
   },
   {
    "fieldname": "not",
@@ -97,7 +109,7 @@
    "fieldname": "yolcu_tipi",
    "fieldtype": "Select",
    "label": "Yolcu Tipi",
-   "options": "Normal\n\u00c7ocuk\nBebek",
+   "options": "Normal\nÇocuk\nBebek",
    "reqd": 1
   },
   {
@@ -105,7 +117,7 @@
    "fieldname": "vize_tipi",
    "fieldtype": "Select",
    "label": "Vize Tipi",
-   "options": "Umre\nTurist\nDi\u011fer",
+   "options": "Umre\nTurist\nDiğer",
    "reqd": 1
   },
   {
@@ -119,66 +131,80 @@
   {
    "fieldname": "otel_maliyeti",
    "fieldtype": "Currency",
-   "label": "Otel Maliyeti"
+   "label": "Otel Maliyeti",
+   "options": "Umre Tour:tur:para_birimi"
   },
   {
    "fieldname": "vize_maliyeti",
    "fieldtype": "Currency",
-   "label": "Vize Maliyeti"
+   "label": "Vize Maliyeti",
+   "options": "Umre Tour:tur:para_birimi"
   },
   {
    "fieldname": "toplam_maliyet",
    "fieldtype": "Currency",
-   "label": "Toplam Maliyet"
+   "label": "Toplam Maliyet",
+   "options": "Umre Tour:tur:para_birimi"
   },
   {
    "fieldname": "kar",
    "fieldtype": "Currency",
-   "label": "Kar"
+   "label": "Kar",
+   "options": "Umre Tour:tur:para_birimi"
   },
   {
    "fieldname": "ucret",
    "fieldtype": "Currency",
-   "label": "\u00dccret",
-   "reqd": 1
+   "label": "Ücret",
+   "reqd": 1,
+   "options": "Umre Tour:tur:para_birimi"
+  },
+  {
+   "fieldname": "manual_cost",
+   "fieldtype": "Currency",
+   "label": "Manuel Maliyet",
+   "options": "Umre Tour:tur:para_birimi"
   },
   {
    "fieldname": "kayit_tarihi",
    "fieldtype": "Date",
-   "label": "Kay\u0131t Tarihi",
+   "label": "Kayıt Tarihi",
    "reqd": 1
   },
   {
    "fieldname": "odenen",
    "fieldtype": "Currency",
-   "label": "\u00d6denen"
+   "label": "Ödenen",
+   "options": "Umre Tour:tur:para_birimi"
   },
   {
    "fieldname": "odeme_turu",
    "fieldtype": "Select",
-   "label": "\u00d6deme t\u00fcr\u00fc",
+   "label": "Ödeme türü",
    "options": "Havale\nElden\nTaksit"
   },
   {
    "fieldname": "payments_section",
    "fieldtype": "Section Break",
-   "label": "\u00d6deme Hareketleri"
+   "label": "Ödeme Hareketleri"
   },
   {
    "fieldname": "payments",
    "fieldtype": "Table",
-   "label": "Payments",
+   "label": "Ödemeler",
    "options": "Umre Booking Payment"
   },
   {
    "fieldname": "ucak_maliyeti",
    "fieldtype": "Currency",
-   "label": "U\u00e7ak Maliyeti"
+   "label": "Uçak Maliyeti",
+   "options": "Umre Tour:tur:para_birimi"
   },
   {
    "fieldname": "diyanet_maliyeti",
    "fieldtype": "Currency",
-   "label": "Diyanet Maliyeti"
+   "label": "Diyanet Maliyeti",
+   "options": "Umre Tour:tur:para_birimi"
   },
   {
    "default": 0,

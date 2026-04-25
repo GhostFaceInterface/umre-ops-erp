@@ -17,6 +17,7 @@ from frappe.utils import cint, flt, getdate
 
 # Must match `Tour Passenger Cost Rule.expense_component` options (first line = flight).
 UCAK_COMPONENT = "U\u00e7ak"
+PAYING_STATUS = "UMRECI"
 
 
 def _parse_oda_index(oda_tipi: str | None) -> int:
@@ -87,12 +88,33 @@ class BookingCalculationService:
 
 	def apply(self) -> None:
 		self._apply_passenger_defaults()
+		if not self._is_paying_customer():
+			self._apply_non_paying_rules()
+			return
+		self.doc.manual_cost = None
 		self._set_ucret_from_tour()
 		self._set_otel_maliyeti()
 		self._set_ucak_maliyeti()
 		self._set_vize_maliyeti()
 		self._set_diyanet()
 		self._set_totals()
+
+	def _status(self) -> str:
+		status = (self.doc.get("statu") or PAYING_STATUS).strip()
+		return status or PAYING_STATUS
+
+	def _is_paying_customer(self) -> bool:
+		return self._status() == PAYING_STATUS
+
+	def _apply_non_paying_rules(self) -> None:
+		manual_cost = flt(self.doc.get("manual_cost") or 0)
+		self.doc.ucret = 0.0
+		self.doc.otel_maliyeti = 0.0
+		self.doc.ucak_maliyeti = 0.0
+		self.doc.vize_maliyeti = 0.0
+		self.doc.diyanet_maliyeti = 0.0
+		self.doc.toplam_maliyet = manual_cost
+		self.doc.kar = flt(0 - manual_cost - flt(self.doc.kms or 0))
 
 	def _tour(self):
 		if not self.doc.tur or not frappe.db.exists("Umre Tour", self.doc.tur):
@@ -183,6 +205,9 @@ class BookingCalculationService:
 		self.doc.vize_maliyeti = flt(frappe.db.get_value("Tour Visa Cost Rule", name, "tutar") or 0)
 
 	def _set_diyanet(self) -> None:
+		if not self._is_paying_customer():
+			self.doc.diyanet_maliyeti = 0.0
+			return
 		if not cint(self.doc.get("diyanet_kart_var")) or not self.doc.tur:
 			self.doc.diyanet_maliyeti = 0.0
 			return

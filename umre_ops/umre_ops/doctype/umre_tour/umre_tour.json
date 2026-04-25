@@ -85,22 +85,26 @@
   {
    "fieldname": "bir_kisilik_oda",
    "fieldtype": "Currency",
-   "label": "1 ki\u015filik oda"
+   "label": "1 ki\u015filik oda",
+   "options": "para_birimi"
   },
   {
    "fieldname": "iki_kisilik_oda",
    "fieldtype": "Currency",
-   "label": "2 ki\u015filik oda"
+   "label": "2 ki\u015filik oda",
+   "options": "para_birimi"
   },
   {
    "fieldname": "uc_kisilik_oda",
    "fieldtype": "Currency",
-   "label": "3 ki\u015filik oda"
+   "label": "3 ki\u015filik oda",
+   "options": "para_birimi"
   },
   {
    "fieldname": "dort_kisilik_oda",
    "fieldtype": "Currency",
-   "label": "4 ki\u015filik oda"
+   "label": "4 ki\u015filik oda",
+   "options": "para_birimi"
   },
   {
    "fieldname": "para_birimi",

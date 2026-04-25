@@ -7,6 +7,7 @@ import json
 from typing import Any
 
 import frappe
+from frappe import _
 from frappe.utils import flt, nowdate
 
 from umre_ops.umre_ops.services.accounting_service import (
@@ -52,7 +53,7 @@ def add_payment_row(
 	posting_date = posting_date or nowdate()
 	amount = flt(amount)
 	if amount == 0:
-		frappe.throw("Payment amount cannot be 0.")
+		frappe.throw(_("Payment amount cannot be 0."))
 
 	if not mode_of_payment:
 		mapping = get_account_mapping(getattr(b, "company", None))
@@ -94,7 +95,7 @@ def post_payment_row_receipt(
 			row = r
 			break
 	if not row:
-		frappe.throw("Payment row not found on this booking.")
+		frappe.throw(_("Payment row not found on this booking."))
 
 	# deterministic idempotency based on the child row stable name
 	idempotency_key = row.idempotency_key or _build_idempotency_key(

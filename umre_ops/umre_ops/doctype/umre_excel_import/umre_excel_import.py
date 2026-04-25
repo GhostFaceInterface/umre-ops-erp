@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import frappe
+from frappe import _
 from frappe.model.document import Document
 
 from umre_ops.umre_ops.services.excel_import_service import enqueue_import, run_dry_run
@@ -12,7 +13,7 @@ from umre_ops.umre_ops.services.excel_import_service import enqueue_import, run_
 class UmreExcelImport(Document):
 	def validate(self) -> None:
 		if self.import_file and not str(self.import_file).lower().endswith((".xlsx", ".xlsm", ".xltx", ".xltm")):
-			frappe.throw("Please attach an Excel .xlsx file.")
+			frappe.throw(_("Please attach an Excel .xlsx file."))
 
 
 @frappe.whitelist()

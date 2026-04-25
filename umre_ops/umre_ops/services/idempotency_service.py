@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import frappe
+from frappe import _
 
 
 @dataclass(frozen=True)
@@ -46,7 +47,7 @@ def ensure_event_started(
 	Raises if the same key is reused with different payload hash.
 	"""
 	if not idempotency_key:
-		frappe.throw("idempotency_key is required")
+		frappe.throw(_("idempotency_key is required"))
 
 	request_payload = request_payload or {}
 	request_hash = sha256_hex(stable_json_dumps(request_payload))
@@ -60,7 +61,7 @@ def ensure_event_started(
 	if existing:
 		if existing.get("request_hash") and existing.get("request_hash") != request_hash:
 			frappe.throw(
-				f"Idempotency key reuse detected for {idempotency_key}. Payload hash mismatch."
+				_("Idempotency key reuse detected for {0}. Payload hash mismatch.").format(idempotency_key)
 			)
 		# If already exists, let caller decide whether to short-circuit on status/result.
 		return existing["name"], request_hash

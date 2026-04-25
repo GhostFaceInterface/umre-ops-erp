@@ -50,13 +50,31 @@
    "reqd": 1
   },
   {
+   "fieldname": "sar_currency",
+   "fieldtype": "Link",
+   "label": "SAR Para Birimi",
+   "options": "Currency",
+   "default": "SAR",
+   "hidden": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "usd_currency",
+   "fieldtype": "Link",
+   "label": "USD Para Birimi",
+   "options": "Currency",
+   "default": "USD",
+   "hidden": 1,
+   "read_only": 1
+  },
+  {
    "fieldname": "birim_fiyat_sar",
    "fieldtype": "Currency",
    "in_list_view": 1,
    "label": "Birim Fiyat SAR",
    "non_negative": 1,
    "reqd": 1,
-   "options": "SAR"
+   "options": "sar_currency"
   },
   {
    "fieldname": "kur",
@@ -69,7 +87,7 @@
    "fieldname": "toplam_oda_maliyeti_usd",
    "fieldtype": "Currency",
    "label": "Toplam Oda Maliyeti USD",
-   "options": "USD"
+   "options": "usd_currency"
   },
   {
    "fieldname": "not",
@@ -80,25 +98,25 @@
    "fieldname": "bir_kisilik_oda_maaliyeti",
    "fieldtype": "Currency",
    "label": "Bir kişilik oda maaliyeti",
-   "options": "USD"
+   "options": "usd_currency"
   },
   {
    "fieldname": "iki_kisilik_oda_maliyeti",
    "fieldtype": "Currency",
    "label": "iki kişilik oda maliyeti",
-   "options": "USD"
+   "options": "usd_currency"
   },
   {
    "fieldname": "uc_kisilik_oda_maliyeti",
    "fieldtype": "Currency",
    "label": "Üç kişilik oda maliyeti",
-   "options": "USD"
+   "options": "usd_currency"
   },
   {
    "fieldname": "dort_kisilik_oda_maliyeti",
    "fieldtype": "Currency",
    "label": "Dört Kişilik oda maliyeti",
-   "options": "USD"
+   "options": "usd_currency"
   }
  ],
  "grid_page_length": 50,

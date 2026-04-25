@@ -14,6 +14,8 @@ frappe.ui.form.on("Umre Booking", {
 });
 
 const PREVIEW_FIELDS = [
+	"statu",
+	"manual_cost",
 	"umreci",
 	"tur",
 	"oda_tipi",

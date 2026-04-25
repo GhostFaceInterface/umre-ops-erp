@@ -4,6 +4,7 @@
 import json
 
 import frappe
+from frappe import _
 from frappe.exceptions import PermissionError
 from frappe.model.document import Document
 from frappe.utils import flt
@@ -46,7 +47,7 @@ def preview_calculated_fields(doc) -> dict:
 		or frappe.has_permission("Umre Booking", "write", throw=False)
 		or frappe.has_permission("Umre Booking", "create", throw=False)
 	):
-		frappe.throw("Not permitted to preview booking calculations", exc=PermissionError)
+		frappe.throw(_("Not permitted to preview booking calculations"), exc=PermissionError)
 	if isinstance(doc, str):
 		data = json.loads(doc)
 	else:
@@ -54,6 +55,8 @@ def preview_calculated_fields(doc) -> dict:
 	temp = frappe.get_doc({"doctype": "Umre Booking", **data})
 	apply_to_booking(temp)
 	return {
+		"statu": temp.get("statu"),
+		"manual_cost": None if temp.get("manual_cost") is None else flt(temp.get("manual_cost")),
 		"yolcu_tipi": temp.get("yolcu_tipi"),
 		"vize_tipi": temp.get("vize_tipi"),
 		"ucret": flt(temp.get("ucret")),

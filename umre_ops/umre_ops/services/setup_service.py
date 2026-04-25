@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import frappe
+from frappe import _
 
 
 def verify_setup() -> dict:
@@ -15,25 +16,25 @@ def verify_setup() -> dict:
 
 	if not frappe.db.exists("DocType", "Umre Ops Settings"):
 		report["ok"] = False
-		report["errors"].append("Missing DocType: Umre Ops Settings (run migrate).")
+		report["errors"].append(_("Missing DocType: Umre Ops Settings (run migrate)."))
 		return report
 
 	try:
 		s = frappe.get_single("Umre Ops Settings").as_dict()
 	except Exception:
 		report["ok"] = False
-		report["errors"].append("Umre Ops Settings is not created yet. Create and set required fields.")
+		report["errors"].append(_("Umre Ops Settings is not created yet. Create and set required fields."))
 		return report
 
 	def req(field: str, doctype: str | None = None):
 		val = s.get(field)
 		if not val:
 			report["ok"] = False
-			report["errors"].append(f"Missing setting: Umre Ops Settings.{field}")
+			report["errors"].append(_("Missing setting: Umre Ops Settings.{0}").format(field))
 			return
 		if doctype and not frappe.db.exists(doctype, val):
 			report["ok"] = False
-			report["errors"].append(f"Invalid setting: {field} points to missing {doctype} {val}")
+			report["errors"].append(_("Invalid setting: {0} points to missing {1} {2}").format(field, doctype, val))
 
 	req("company", "Company")
 	for f in (
@@ -49,23 +50,23 @@ def verify_setup() -> dict:
 		val = s.get(f)
 		if val and not frappe.db.exists("Account", val):
 			report["ok"] = False
-			report["errors"].append(f"Invalid Account mapping: {f} -> {val}")
+			report["errors"].append(_("Invalid Account mapping: {0} -> {1}").format(f, val))
 		elif not val:
-			report["warnings"].append(f"Missing Account mapping: Umre Ops Settings.{f}")
+			report["warnings"].append(_("Missing Account mapping: Umre Ops Settings.{0}").format(f))
 
 	for f in ("umre_operasyon_root_cost_center", "genel_gider_cost_center", "pazarlama_cost_center"):
 		val = s.get(f)
 		if val and not frappe.db.exists("Cost Center", val):
 			report["ok"] = False
-			report["errors"].append(f"Invalid Cost Center mapping: {f} -> {val}")
+			report["errors"].append(_("Invalid Cost Center mapping: {0} -> {1}").format(f, val))
 		elif not val:
-			report["warnings"].append(f"Missing Cost Center mapping: Umre Ops Settings.{f}")
+			report["warnings"].append(_("Missing Cost Center mapping: Umre Ops Settings.{0}").format(f))
 
 	for f in ("havale_mode_of_payment", "elden_mode_of_payment", "taksit_mode_of_payment"):
 		val = s.get(f)
 		if val and not frappe.db.exists("Mode of Payment", val):
 			report["ok"] = False
-			report["errors"].append(f"Invalid Mode of Payment mapping: {f} -> {val}")
+			report["errors"].append(_("Invalid Mode of Payment mapping: {0} -> {1}").format(f, val))
 
 	report["details"]["settings"] = {k: s.get(k) for k in s.keys()}
 	return report

@@ -6,6 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import frappe
+from frappe import _
 
 
 @dataclass(frozen=True)
@@ -35,7 +36,7 @@ def get_account_mapping(company: str | None = None) -> UmreAccountMapping:
 	s = get_settings()
 	company = company or s.get("company")
 	if not company:
-		frappe.throw("Umre Ops Settings.company is required for accounting posting.")
+		frappe.throw(_("Umre Ops Settings.company is required for accounting posting."))
 	return UmreAccountMapping(
 		company=company,
 		income_account=s.get("income_account"),

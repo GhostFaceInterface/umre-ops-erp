@@ -1,10 +1,9 @@
-name: CI
+name: CI (experimental manual)
 
+# Experimental: full ERPNext bench/site bootstrap is not stable in this repo yet.
+# Keep this manual until the CI company/site fixture bootstrap is completed.
 on:
-  push:
-    branches:
-      - version-16
-  pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: version-16-umre_ops-${{ github.event.number }}

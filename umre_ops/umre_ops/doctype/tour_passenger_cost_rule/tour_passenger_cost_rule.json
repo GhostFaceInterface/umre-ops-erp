@@ -40,7 +40,7 @@
    "fieldname": "expense_component",
    "fieldtype": "Select",
    "in_list_view": 1,
-   "label": "Expense component",
+   "label": "Gider Bileşeni",
    "options": "Uçak\nOtel\nVize\nDiğer",
    "reqd": 1
   },

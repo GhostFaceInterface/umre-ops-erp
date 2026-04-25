@@ -28,107 +28,107 @@
   {
    "fieldname": "company",
    "fieldtype": "Link",
-   "label": "Company",
+   "label": "Şirket",
    "options": "Company",
    "reqd": 1
   },
   {
    "fieldname": "default_currency",
    "fieldtype": "Link",
-   "label": "Default Currency",
+   "label": "Varsayılan Para Birimi",
    "options": "Currency"
   },
   {
    "fieldname": "accounts_section",
    "fieldtype": "Section Break",
-   "label": "Accounts"
+   "label": "Hesaplar"
   },
   {
    "fieldname": "income_account",
    "fieldtype": "Link",
-   "label": "Income Account",
+   "label": "Gelir Hesabı",
    "options": "Account"
   },
   {
    "fieldname": "receivable_account",
    "fieldtype": "Link",
-   "label": "Receivable Account",
+   "label": "Alacak Hesabı",
    "options": "Account"
   },
   {
    "fieldname": "hotel_expense_account",
    "fieldtype": "Link",
-   "label": "Hotel Expense Account",
+   "label": "Otel Gider Hesabı",
    "options": "Account"
   },
   {
    "fieldname": "flight_expense_account",
    "fieldtype": "Link",
-   "label": "Flight Expense Account",
+   "label": "Uçak Gider Hesabı",
    "options": "Account"
   },
   {
    "fieldname": "visa_expense_account",
    "fieldtype": "Link",
-   "label": "Visa Expense Account",
+   "label": "Vize Gider Hesabı",
    "options": "Account"
   },
   {
    "fieldname": "diyanet_expense_account",
    "fieldtype": "Link",
-   "label": "Diyanet Expense Account",
+   "label": "Diyanet Gider Hesabı",
    "options": "Account"
   },
   {
    "fieldname": "commission_expense_account",
    "fieldtype": "Link",
-   "label": "Commission Expense Account",
+   "label": "Komisyon Gider Hesabı",
    "options": "Account"
   },
   {
    "fieldname": "cost_centers_section",
    "fieldtype": "Section Break",
-   "label": "Cost Centers"
+   "label": "Maliyet Merkezleri"
   },
   {
    "fieldname": "umre_operasyon_root_cost_center",
    "fieldtype": "Link",
-   "label": "Umre Operasyon Root Cost Center",
+   "label": "Umre Operasyon Kök Maliyet Merkezi",
    "options": "Cost Center"
   },
   {
    "fieldname": "genel_gider_cost_center",
    "fieldtype": "Link",
-   "label": "Genel Gider Cost Center",
+   "label": "Genel Gider Maliyet Merkezi",
    "options": "Cost Center"
   },
   {
    "fieldname": "pazarlama_cost_center",
    "fieldtype": "Link",
-   "label": "Pazarlama Cost Center",
+   "label": "Pazarlama Maliyet Merkezi",
    "options": "Cost Center"
   },
   {
    "fieldname": "mop_section",
    "fieldtype": "Section Break",
-   "label": "Mode of Payment Mapping"
+   "label": "Ödeme Türü Eşlemesi"
   },
   {
    "fieldname": "havale_mode_of_payment",
    "fieldtype": "Link",
-   "label": "Havale Mode of Payment",
+   "label": "Havale Ödeme Türü",
    "options": "Mode of Payment"
   },
   {
    "fieldname": "elden_mode_of_payment",
    "fieldtype": "Link",
-   "label": "Elden Mode of Payment",
+   "label": "Elden Ödeme Türü",
    "options": "Mode of Payment"
   },
   {
    "fieldname": "taksit_mode_of_payment",
    "fieldtype": "Link",
-   "label": "Taksit Mode of Payment",
+   "label": "Taksit Ödeme Türü",
    "options": "Mode of Payment"
   }
  ],
@@ -157,4 +157,3 @@
  "sort_field": "modified",
  "sort_order": "DESC"
 }
-

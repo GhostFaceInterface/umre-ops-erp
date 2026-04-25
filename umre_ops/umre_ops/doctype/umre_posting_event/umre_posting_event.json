@@ -28,105 +28,105 @@
   {
    "fieldname": "idempotency_key",
    "fieldtype": "Data",
-   "label": "Idempotency Key",
+   "label": "Tekrarsız İşlem Anahtarı",
    "reqd": 1,
    "unique": 1
   },
   {
    "fieldname": "operation",
    "fieldtype": "Data",
-   "label": "Operation",
+   "label": "İşlem",
    "reqd": 1
   },
   {
    "fieldname": "status",
    "fieldtype": "Select",
-   "label": "Status",
+   "label": "Durum",
    "options": "Started\nSucceeded\nFailed",
    "reqd": 1
   },
   {
    "fieldname": "company",
    "fieldtype": "Link",
-   "label": "Company",
+   "label": "Şirket",
    "options": "Company",
    "reqd": 1
   },
   {
    "fieldname": "source_doctype",
    "fieldtype": "Data",
-   "label": "Source DocType",
+   "label": "Kaynak Belge Türü",
    "reqd": 1
   },
   {
    "fieldname": "source_name",
    "fieldtype": "Data",
-   "label": "Source Name",
+   "label": "Kaynak Adı",
    "reqd": 1
   },
   {
    "fieldname": "source_child_doctype",
    "fieldtype": "Data",
-   "label": "Source Child DocType"
+   "label": "Kaynak Alt Belge Türü"
   },
   {
    "fieldname": "source_child_name",
    "fieldtype": "Data",
-   "label": "Source Child Name"
+   "label": "Kaynak Alt Belge Adı"
   },
   {
    "fieldname": "request_hash",
    "fieldtype": "Data",
-   "label": "Request Hash"
+   "label": "İstek Özeti"
   },
   {
    "fieldname": "attempt_count",
    "fieldtype": "Int",
-   "label": "Attempt Count",
+   "label": "Deneme Sayısı",
    "default": 0,
    "read_only": 1
   },
   {
    "fieldname": "started_on",
    "fieldtype": "Datetime",
-   "label": "Started On",
+   "label": "Başlama Zamanı",
    "read_only": 1
   },
   {
    "fieldname": "finished_on",
    "fieldtype": "Datetime",
-   "label": "Finished On",
+   "label": "Bitiş Zamanı",
    "read_only": 1
   },
   {
    "fieldname": "result_doctype",
    "fieldtype": "Data",
-   "label": "Result DocType",
+   "label": "Sonuç Belge Türü",
    "read_only": 1
   },
   {
    "fieldname": "result_name",
    "fieldtype": "Data",
-   "label": "Result Name",
+   "label": "Sonuç Adı",
    "read_only": 1
   },
   {
    "fieldname": "error",
    "fieldtype": "Long Text",
-   "label": "Error",
+   "label": "Hata",
    "read_only": 1
   },
   {
    "fieldname": "request_payload_json",
    "fieldtype": "Code",
-   "label": "Request Payload JSON",
+   "label": "İstek Yükü JSON",
    "options": "JSON",
    "read_only": 1
   },
   {
    "fieldname": "result_payload_json",
    "fieldtype": "Code",
-   "label": "Result Payload JSON",
+   "label": "Sonuç Yükü JSON",
    "options": "JSON",
    "read_only": 1
   }
@@ -156,4 +156,3 @@
  "sort_field": "creation",
  "sort_order": "DESC"
 }
-

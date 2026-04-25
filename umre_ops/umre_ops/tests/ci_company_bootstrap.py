@@ -10,6 +10,7 @@ Uses ERPNext's setup wizard company helper so chart of accounts is valid. Safe t
 from __future__ import annotations
 
 import frappe
+from frappe import _
 
 
 def ensure_at_least_one_company() -> str | None:
@@ -20,7 +21,7 @@ def ensure_at_least_one_company() -> str | None:
 	(`bench --site test_site execute umre_ops.umre_ops.tests.ci_company_bootstrap.ensure_at_least_one_company`)
 	"""
 	if not frappe.db.exists("DocType", "Company"):
-		frappe.throw("Company DocType not found; install erpnext on the site before running this.")
+		frappe.throw(_("Company DocType not found; install erpnext on the site before running this."))
 	existing = frappe.get_all("Company", pluck="name", limit=1)
 	if existing:
 		return existing[0]
@@ -31,7 +32,7 @@ def ensure_at_least_one_company() -> str | None:
 		)
 		from erpnext.setup.setup_wizard.operations.company_setup import get_fy_details
 	except ImportError:
-		frappe.throw("ERPNext must be installed to create a Company document")
+		frappe.throw(_("ERPNext must be installed to create a Company document"))
 
 	# `Company.create_default_warehouses` always creates a "Goods In Transit" warehouse
 	# with warehouse_type=Transit; fresh sites may not include that `Warehouse Type` yet.
@@ -89,4 +90,4 @@ def get_or_create_test_company() -> str:
 	created = ensure_at_least_one_company()
 	if created:
 		return created
-	frappe.throw("No Company available: install ERPNext and run ensure_at_least_one_company()")
+	frappe.throw(_("No Company available: install ERPNext and run ensure_at_least_one_company()"))

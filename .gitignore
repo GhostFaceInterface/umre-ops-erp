@@ -61,3 +61,23 @@ __pycache__/
 node_modules/
 .env
 *.log
+# Local Frappe/ERPNext runtime and sensitive files
+sites/
+logs/
+private/
+public/files/
+*.sql
+*.sql.gz
+*.dump
+*.bak
+*.backup
+*.db
+*.sqlite
+*.sqlite3
+site_config.json
+common_site_config.json
+**/site_config.json
+**/common_site_config.json
+.env.*
+!.env.example
+.DS_Store
