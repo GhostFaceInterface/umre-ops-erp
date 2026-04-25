@@ -2,17 +2,22 @@
 # See license.txt
 
 import frappe
-from frappe.tests import IntegrationTestCase
+from frappe.tests.utils import FrappeTestCase
 
 from umre_ops.umre_ops.services.idempotency_service import ensure_event_started, get_existing_result
 from umre_ops.umre_ops.tests.ci_company_bootstrap import get_or_create_test_company
 
 
-EXTRA_TEST_RECORD_DEPENDENCIES = []
-IGNORE_TEST_RECORD_DEPENDENCIES = []
+class TestUmrePostingEventIdempotency(FrappeTestCase):
+	"""
+	Database integration test for idempotency only.
 
+	Uses FrappeTestCase (not IntegrationTestCase) so Frappe does not build the full
+	Link-dependency test-record tree: with ERPNext installed, `make_test_records` for
+	`Umre Posting Event` would recurse through Company and a large part of the ERP graph.
+	We instead rely on `get_or_create_test_company()` and explicit service calls.
+	"""
 
-class IntegrationTestUmrePostingEvent(IntegrationTestCase):
 	def test_idempotency_event_reuse(self) -> None:
 		company = get_or_create_test_company()
 		key = "TEST::UMRE::IDEMPOTENCY::1"
