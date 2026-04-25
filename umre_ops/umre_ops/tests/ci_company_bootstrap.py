@@ -29,28 +29,43 @@ def ensure_at_least_one_company() -> str | None:
 		from erpnext.accounts.doctype.account.chart_of_accounts.chart_of_accounts import (
 			get_charts_for_country,
 		)
-		from erpnext.setup.setup_wizard.operations.company_setup import (
-			create_fiscal_year_and_company,
-		)
+		from erpnext.setup.setup_wizard.operations.company_setup import get_fy_details
 	except ImportError:
 		frappe.throw("ERPNext must be installed to create a Company document")
 
+	# Same pattern as ERPNext's create_fiscal_year_and_company, but perpetual inventory off so
+	# default warehouses (and Warehouse Type fixtures like "Transit") are not required on CI.
 	country = "India"
 	currency = "INR"
 	templates = get_charts_for_country(country)
 	chart = templates[0] if templates else "Standard"
 
-	create_fiscal_year_and_company(
+	fy_start = "2025-04-01"
+	fy_end = "2026-03-31"
+	fy_name = get_fy_details(fy_start, fy_end)
+	if not frappe.db.exists("Fiscal Year", fy_name):
+		frappe.get_doc(
+			{
+				"doctype": "Fiscal Year",
+				"year": fy_name,
+				"year_start_date": fy_start,
+				"year_end_date": fy_end,
+			}
+		).insert()
+
+	frappe.get_doc(
 		{
-			"fy_start_date": "2025-04-01",
-			"fy_end_date": "2026-03-31",
+			"doctype": "Company",
 			"company_name": "Umre Ops Test Company",
-			"company_abbr": "UOTC",
-			"currency": currency,
+			"enable_perpetual_inventory": 0,
+			"abbr": "UOTC",
+			"default_currency": currency,
 			"country": country,
+			"create_chart_of_accounts_based_on": "Standard Template",
 			"chart_of_accounts": chart,
 		}
-	)
+	).insert()
+
 	frappe.db.commit()
 	created = frappe.get_all("Company", pluck="name", limit=1)
 	return created[0] if created else None
