@@ -13,7 +13,14 @@ IGNORE_TEST_RECORD_DEPENDENCIES = ["Company"]
 
 class IntegrationTestUmrePostingEvent(IntegrationTestCase):
 	def test_idempotency_event_reuse(self) -> None:
-		company = frappe.get_all("Company", pluck="name", limit=1)[0]
+		# `Company` is an ERPNext DocType. CI may use Frappe + umre_ops only.
+		if frappe.db.exists("DocType", "Company"):
+			companies = frappe.get_all("Company", pluck="name", limit=1)
+			if not companies:
+				self.skipTest("No Company in database; cannot validate Link to Company")
+			company = companies[0]
+		else:
+			company = "_Test Umre Ops CI (no ERPNext)"
 		key = "TEST::UMRE::IDEMPOTENCY::1"
 		payload = {"a": 1, "b": "x"}
 
