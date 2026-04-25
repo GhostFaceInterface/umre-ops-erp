@@ -5,22 +5,16 @@ import frappe
 from frappe.tests import IntegrationTestCase
 
 from umre_ops.umre_ops.services.idempotency_service import ensure_event_started, get_existing_result
+from umre_ops.umre_ops.tests.ci_company_bootstrap import get_or_create_test_company
 
 
 EXTRA_TEST_RECORD_DEPENDENCIES = []
-IGNORE_TEST_RECORD_DEPENDENCIES = ["Company"]
+IGNORE_TEST_RECORD_DEPENDENCIES = []
 
 
 class IntegrationTestUmrePostingEvent(IntegrationTestCase):
 	def test_idempotency_event_reuse(self) -> None:
-		# `Company` is an ERPNext DocType. CI may use Frappe + umre_ops only.
-		if frappe.db.exists("DocType", "Company"):
-			companies = frappe.get_all("Company", pluck="name", limit=1)
-			if not companies:
-				self.skipTest("No Company in database; cannot validate Link to Company")
-			company = companies[0]
-		else:
-			company = "_Test Umre Ops CI (no ERPNext)"
+		company = get_or_create_test_company()
 		key = "TEST::UMRE::IDEMPOTENCY::1"
 		payload = {"a": 1, "b": "x"}
 

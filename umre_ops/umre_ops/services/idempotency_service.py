@@ -83,9 +83,7 @@ def ensure_event_started(
 			"request_payload_json": stable_json_dumps(request_payload),
 		}
 	)
-	# Link target only exists with ERPNext; on Frappe-only sites (e.g. CI) validate the key otherwise.
-	validate_company = bool(frappe.db.exists("DocType", "Company"))
-	doc.insert(ignore_permissions=True, ignore_links=not validate_company)
+	doc.insert(ignore_permissions=True)
 	return doc.name, request_hash
 
 
