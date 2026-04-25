@@ -1,0 +1,96 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "TPCR-.YYYY.-.#####",
+ "creation": "2026-04-19 20:52:37.233741",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "temel_section",
+  "tur",
+  "yolcu_tipi",
+  "expense_component",
+  "tutar",
+  "para_birimi",
+  "not"
+ ],
+ "fields": [
+  {
+   "fieldname": "temel_section",
+   "fieldtype": "Section Break",
+   "label": "Temel"
+  },
+  {
+   "fieldname": "tur",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Tur",
+   "options": "Umre Tour",
+   "reqd": 1
+  },
+  {
+   "fieldname": "yolcu_tipi",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Yolcu Tipi",
+   "options": "Normal\n\u00c7ocuk\nBebek",
+   "reqd": 1
+  },
+  {
+   "fieldname": "expense_component",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Expense component",
+   "options": "U\u00e7ak\nOtel\nVize\nDi\u011fer",
+   "reqd": 1
+  },
+  {
+   "fieldname": "tutar",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Tutar",
+   "non_negative": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "para_birimi",
+   "fieldtype": "Link",
+   "label": "Para Birimi",
+   "options": "Currency",
+   "reqd": 1
+  },
+  {
+   "fieldname": "not",
+   "fieldtype": "Small Text",
+   "label": "Not"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-04-23 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Umre Ops",
+ "name": "Tour Passenger Cost Rule",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

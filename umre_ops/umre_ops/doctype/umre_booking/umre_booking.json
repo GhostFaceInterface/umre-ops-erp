@@ -1,0 +1,218 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "UMB-.YYYY.-.#####",
+ "creation": "2026-04-19 18:55:20.785289",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "katilim_temel_bilgileri_section",
+  "company",
+  "customer",
+  "umreci",
+  "tur",
+  "oda_tipi",
+  "kimden_geldi",
+  "kayit_tarihi",
+  "yolcu_tipi",
+  "vize_tipi",
+  "ic_hat_baglanti",
+  "operasyon_ve_odeme_bilgileri_section",
+  "ucret",
+  "odenen",
+  "kms",
+  "odeme_turu",
+  "payments_section",
+  "payments",
+  "otel_maliyeti",
+  "ucak_maliyeti",
+  "vize_maliyeti",
+  "toplam_maliyet",
+  "kar",
+  "not",
+  "diyanet_kart_var",
+  "diyanet_maliyeti"
+ ],
+ "fields": [
+  {
+   "fieldname": "katilim_temel_bilgileri_section",
+   "fieldtype": "Section Break",
+   "label": "Kat\u0131l\u0131m Temel Bilgileri"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer"
+  },
+  {
+   "fieldname": "tur",
+   "fieldtype": "Link",
+   "label": "Tur",
+   "options": "Umre Tour",
+   "reqd": 1
+  },
+  {
+   "fieldname": "kimden_geldi",
+   "fieldtype": "Link",
+   "label": "Kimden Geldi",
+   "options": "Referral Source"
+  },
+  {
+   "fieldname": "operasyon_ve_odeme_bilgileri_section",
+   "fieldtype": "Section Break",
+   "label": "Operasyon ve \u00d6deme Bilgileri"
+  },
+  {
+   "fieldname": "oda_tipi",
+   "fieldtype": "Select",
+   "label": "Oda Tipi",
+   "options": "1 Ki\u015filik\n2 Ki\u015filik\n3 Ki\u015filik\n4 Ki\u015filik",
+   "reqd": 1
+  },
+  {
+   "fieldname": "ic_hat_baglanti",
+   "fieldtype": "Select",
+   "label": "i\u00e7 hat ba\u011flant\u0131",
+   "options": "Adana\nAd\u0131yaman\nAfyonkarahisar\nA\u011fr\u0131\nAksaray\nAmasya\nAnkara\nAntalya\nArdahan\nArtvin\nAyd\u0131n\nBal\u0131kesir\nBart\u0131n\nBatman\nBayburt\nBilecik\nBing\u00f6l\nBitlis\nBolu\nBurdur\nBursa\n\u00c7anakkale\n\u00c7ank\u0131r\u0131\n\u00c7orum\nDenizli\nDiyarbak\u0131r\nD\u00fczce\nEdirne\nElaz\u0131\u011f\nErzincan\nErzurum\nEski\u015fehir\nGaziantep\nGiresun\nG\u00fcm\u00fc\u015fhane\nHakkari\nHatay\nI\u011fd\u0131r\nIsparta\n\u0130stanbul\n\u0130zmir\nKahramanmara\u015f\nKarab\u00fck\nKaraman\nKars\nKastamonu\nKayseri\nKilis\nK\u0131r\u0131kkale\nK\u0131rklareli\nK\u0131r\u015fehir\nKocaeli\nKonya\nK\u00fctahya\nMalatya\nManisa\nMardin\nMersin\nMu\u011fla\nMu\u015f\nNev\u015fehir\nNi\u011fde\nOrdu\nOsmaniye\nRize\nSakarya\nSamsun\nSiirt\nSinop\nSivas\n\u015eanl\u0131urfa\n\u015e\u0131rnak\nTekirda\u011f\nTokat\nTrabzon\nTunceli\nU\u015fak\nVan\nYalova\nYozgat\nZonguldak",
+   "reqd": 1
+  },
+  {
+   "fieldname": "kms",
+   "fieldtype": "Currency",
+   "label": "KMS"
+  },
+  {
+   "fieldname": "not",
+   "fieldtype": "Small Text",
+   "label": "Not"
+  },
+  {
+   "fieldname": "yolcu_tipi",
+   "fieldtype": "Select",
+   "label": "Yolcu Tipi",
+   "options": "Normal\n\u00c7ocuk\nBebek",
+   "reqd": 1
+  },
+  {
+   "default": "Umre",
+   "fieldname": "vize_tipi",
+   "fieldtype": "Select",
+   "label": "Vize Tipi",
+   "options": "Umre\nTurist\nDi\u011fer",
+   "reqd": 1
+  },
+  {
+   "fieldname": "umreci",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Umreci",
+   "options": "Umreci",
+   "reqd": 1
+  },
+  {
+   "fieldname": "otel_maliyeti",
+   "fieldtype": "Currency",
+   "label": "Otel Maliyeti"
+  },
+  {
+   "fieldname": "vize_maliyeti",
+   "fieldtype": "Currency",
+   "label": "Vize Maliyeti"
+  },
+  {
+   "fieldname": "toplam_maliyet",
+   "fieldtype": "Currency",
+   "label": "Toplam Maliyet"
+  },
+  {
+   "fieldname": "kar",
+   "fieldtype": "Currency",
+   "label": "Kar"
+  },
+  {
+   "fieldname": "ucret",
+   "fieldtype": "Currency",
+   "label": "\u00dccret",
+   "reqd": 1
+  },
+  {
+   "fieldname": "kayit_tarihi",
+   "fieldtype": "Date",
+   "label": "Kay\u0131t Tarihi",
+   "reqd": 1
+  },
+  {
+   "fieldname": "odenen",
+   "fieldtype": "Currency",
+   "label": "\u00d6denen"
+  },
+  {
+   "fieldname": "odeme_turu",
+   "fieldtype": "Select",
+   "label": "\u00d6deme t\u00fcr\u00fc",
+   "options": "Havale\nElden\nTaksit"
+  },
+  {
+   "fieldname": "payments_section",
+   "fieldtype": "Section Break",
+   "label": "\u00d6deme Hareketleri"
+  },
+  {
+   "fieldname": "payments",
+   "fieldtype": "Table",
+   "label": "Payments",
+   "options": "Umre Booking Payment"
+  },
+  {
+   "fieldname": "ucak_maliyeti",
+   "fieldtype": "Currency",
+   "label": "U\u00e7ak Maliyeti"
+  },
+  {
+   "fieldname": "diyanet_maliyeti",
+   "fieldtype": "Currency",
+   "label": "Diyanet Maliyeti"
+  },
+  {
+   "default": 0,
+   "fieldname": "diyanet_kart_var",
+   "fieldtype": "Check",
+   "label": "Diyanet kart var"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-04-23 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Umre Ops",
+ "name": "Umre Booking",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

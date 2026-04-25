@@ -1,0 +1,160 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-04-23 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "company",
+  "default_currency",
+  "accounts_section",
+  "income_account",
+  "receivable_account",
+  "hotel_expense_account",
+  "flight_expense_account",
+  "visa_expense_account",
+  "diyanet_expense_account",
+  "commission_expense_account",
+  "cost_centers_section",
+  "umre_operasyon_root_cost_center",
+  "genel_gider_cost_center",
+  "pazarlama_cost_center",
+  "mop_section",
+  "havale_mode_of_payment",
+  "elden_mode_of_payment",
+  "taksit_mode_of_payment"
+ ],
+ "fields": [
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fieldname": "default_currency",
+   "fieldtype": "Link",
+   "label": "Default Currency",
+   "options": "Currency"
+  },
+  {
+   "fieldname": "accounts_section",
+   "fieldtype": "Section Break",
+   "label": "Accounts"
+  },
+  {
+   "fieldname": "income_account",
+   "fieldtype": "Link",
+   "label": "Income Account",
+   "options": "Account"
+  },
+  {
+   "fieldname": "receivable_account",
+   "fieldtype": "Link",
+   "label": "Receivable Account",
+   "options": "Account"
+  },
+  {
+   "fieldname": "hotel_expense_account",
+   "fieldtype": "Link",
+   "label": "Hotel Expense Account",
+   "options": "Account"
+  },
+  {
+   "fieldname": "flight_expense_account",
+   "fieldtype": "Link",
+   "label": "Flight Expense Account",
+   "options": "Account"
+  },
+  {
+   "fieldname": "visa_expense_account",
+   "fieldtype": "Link",
+   "label": "Visa Expense Account",
+   "options": "Account"
+  },
+  {
+   "fieldname": "diyanet_expense_account",
+   "fieldtype": "Link",
+   "label": "Diyanet Expense Account",
+   "options": "Account"
+  },
+  {
+   "fieldname": "commission_expense_account",
+   "fieldtype": "Link",
+   "label": "Commission Expense Account",
+   "options": "Account"
+  },
+  {
+   "fieldname": "cost_centers_section",
+   "fieldtype": "Section Break",
+   "label": "Cost Centers"
+  },
+  {
+   "fieldname": "umre_operasyon_root_cost_center",
+   "fieldtype": "Link",
+   "label": "Umre Operasyon Root Cost Center",
+   "options": "Cost Center"
+  },
+  {
+   "fieldname": "genel_gider_cost_center",
+   "fieldtype": "Link",
+   "label": "Genel Gider Cost Center",
+   "options": "Cost Center"
+  },
+  {
+   "fieldname": "pazarlama_cost_center",
+   "fieldtype": "Link",
+   "label": "Pazarlama Cost Center",
+   "options": "Cost Center"
+  },
+  {
+   "fieldname": "mop_section",
+   "fieldtype": "Section Break",
+   "label": "Mode of Payment Mapping"
+  },
+  {
+   "fieldname": "havale_mode_of_payment",
+   "fieldtype": "Link",
+   "label": "Havale Mode of Payment",
+   "options": "Mode of Payment"
+  },
+  {
+   "fieldname": "elden_mode_of_payment",
+   "fieldtype": "Link",
+   "label": "Elden Mode of Payment",
+   "options": "Mode of Payment"
+  },
+  {
+   "fieldname": "taksit_mode_of_payment",
+   "fieldtype": "Link",
+   "label": "Taksit Mode of Payment",
+   "options": "Mode of Payment"
+  }
+ ],
+ "grid_page_length": 50,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-04-23 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Umre Ops",
+ "name": "Umre Ops Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC"
+}
+

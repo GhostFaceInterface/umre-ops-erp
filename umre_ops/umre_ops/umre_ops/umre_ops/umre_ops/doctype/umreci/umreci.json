@@ -1,0 +1,93 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-04-19 21:42:06.640960",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "ad",
+  "soyad",
+  "cinsiyet",
+  "tc_kimlik",
+  "dogum_tarihi",
+  "telefon_numarasi",
+  "uyruk"
+ ],
+ "fields": [
+  {
+   "fieldname": "ad",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Ad",
+   "reqd": 1
+  },
+  {
+   "fieldname": "soyad",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Soyad",
+   "reqd": 1
+  },
+  {
+   "fieldname": "cinsiyet",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Cinsiyet",
+   "options": "MR\nMRS",
+   "reqd": 1
+  },
+  {
+   "fieldname": "tc_kimlik",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "TC Kimlik",
+   "reqd": 1
+  },
+  {
+   "fieldname": "dogum_tarihi",
+   "fieldtype": "Date",
+   "label": "Do\u011fum Tarihi",
+   "reqd": 1
+  },
+  {
+   "fieldname": "telefon_numarasi",
+   "fieldtype": "Data",
+   "label": "Telefon numaras\u0131"
+  },
+  {
+   "default": "TC",
+   "fieldname": "uyruk",
+   "fieldtype": "Data",
+   "label": "Uyruk",
+   "reqd": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-04-23 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Umre Ops",
+ "name": "Umreci",
+ "naming_rule": "By script",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

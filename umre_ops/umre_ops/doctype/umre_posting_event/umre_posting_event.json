@@ -1,0 +1,159 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:idempotency_key",
+ "creation": "2026-04-23 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "idempotency_key",
+  "operation",
+  "status",
+  "company",
+  "source_doctype",
+  "source_name",
+  "source_child_doctype",
+  "source_child_name",
+  "request_hash",
+  "attempt_count",
+  "started_on",
+  "finished_on",
+  "result_doctype",
+  "result_name",
+  "error",
+  "request_payload_json",
+  "result_payload_json"
+ ],
+ "fields": [
+  {
+   "fieldname": "idempotency_key",
+   "fieldtype": "Data",
+   "label": "Idempotency Key",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "operation",
+   "fieldtype": "Data",
+   "label": "Operation",
+   "reqd": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Started\nSucceeded\nFailed",
+   "reqd": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fieldname": "source_doctype",
+   "fieldtype": "Data",
+   "label": "Source DocType",
+   "reqd": 1
+  },
+  {
+   "fieldname": "source_name",
+   "fieldtype": "Data",
+   "label": "Source Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "source_child_doctype",
+   "fieldtype": "Data",
+   "label": "Source Child DocType"
+  },
+  {
+   "fieldname": "source_child_name",
+   "fieldtype": "Data",
+   "label": "Source Child Name"
+  },
+  {
+   "fieldname": "request_hash",
+   "fieldtype": "Data",
+   "label": "Request Hash"
+  },
+  {
+   "fieldname": "attempt_count",
+   "fieldtype": "Int",
+   "label": "Attempt Count",
+   "default": 0,
+   "read_only": 1
+  },
+  {
+   "fieldname": "started_on",
+   "fieldtype": "Datetime",
+   "label": "Started On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "finished_on",
+   "fieldtype": "Datetime",
+   "label": "Finished On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "result_doctype",
+   "fieldtype": "Data",
+   "label": "Result DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "result_name",
+   "fieldtype": "Data",
+   "label": "Result Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Long Text",
+   "label": "Error",
+   "read_only": 1
+  },
+  {
+   "fieldname": "request_payload_json",
+   "fieldtype": "Code",
+   "label": "Request Payload JSON",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "fieldname": "result_payload_json",
+   "fieldtype": "Code",
+   "label": "Result Payload JSON",
+   "options": "JSON",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-04-23 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Umre Ops",
+ "name": "Umre Posting Event",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC"
+}
+

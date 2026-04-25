@@ -1,0 +1,175 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "UEI-.YYYY.-.#####",
+ "creation": "2026-04-25 14:10:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "import_setup_section",
+  "import_file",
+  "target_tour",
+  "status",
+  "job_id",
+  "summary_section",
+  "total_rows",
+  "created_umreci",
+  "updated_umreci",
+  "created_bookings",
+  "updated_bookings",
+  "row_errors",
+  "started_at",
+  "completed_at",
+  "results_section",
+  "dry_run_result",
+  "row_log",
+  "error_log"
+ ],
+ "fields": [
+  {
+   "fieldname": "import_setup_section",
+   "fieldtype": "Section Break",
+   "label": "Import Setup"
+  },
+  {
+   "fieldname": "import_file",
+   "fieldtype": "Attach",
+   "label": "Import File",
+   "reqd": 1
+  },
+  {
+   "fieldname": "target_tour",
+   "fieldtype": "Link",
+   "label": "Target Tour",
+   "options": "Umre Tour",
+   "reqd": 1
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Draft\nValidated\nQueued\nProcessing\nCompleted\nFailed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "job_id",
+   "fieldtype": "Data",
+   "label": "Job ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "summary_section",
+   "fieldtype": "Section Break",
+   "label": "Summary"
+  },
+  {
+   "default": "0",
+   "fieldname": "total_rows",
+   "fieldtype": "Int",
+   "label": "Total Rows",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "created_umreci",
+   "fieldtype": "Int",
+   "label": "Created Umreci",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "updated_umreci",
+   "fieldtype": "Int",
+   "label": "Updated Umreci",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "created_bookings",
+   "fieldtype": "Int",
+   "label": "Created Bookings",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "updated_bookings",
+   "fieldtype": "Int",
+   "label": "Updated Bookings",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "row_errors",
+   "fieldtype": "Int",
+   "label": "Row Errors",
+   "read_only": 1
+  },
+  {
+   "fieldname": "started_at",
+   "fieldtype": "Datetime",
+   "label": "Started At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "completed_at",
+   "fieldtype": "Datetime",
+   "label": "Completed At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "results_section",
+   "fieldtype": "Section Break",
+   "label": "Results"
+  },
+  {
+   "fieldname": "dry_run_result",
+   "fieldtype": "Code",
+   "label": "Dry Run Result",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "fieldname": "row_log",
+   "fieldtype": "Code",
+   "label": "Row Log",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error_log",
+   "fieldtype": "Long Text",
+   "label": "Error Log",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-04-25 14:10:00.000000",
+ "modified_by": "Administrator",
+ "module": "Umre Ops",
+ "name": "Umre Excel Import",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

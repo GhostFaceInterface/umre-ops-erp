@@ -53,3 +53,11 @@ jspm_packages/
 
 # Aider AI Chat
 .aider*
+
+# App policy (pyc, env, node, logs)
+__pycache__/
+**/__pycache__/
+*.pyc
+node_modules/
+.env
+*.log

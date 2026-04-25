@@ -1,0 +1,106 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-04-23 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "posting_date",
+  "amount",
+  "currency",
+  "mode_of_payment",
+  "reference_no",
+  "reference_date",
+  "remarks",
+  "external_reference",
+  "idempotency_key",
+  "posting_status",
+  "payment_entry",
+  "journal_entry"
+ ],
+ "fields": [
+  {
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "label": "Posting Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Amount",
+   "reqd": 1
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency"
+  },
+  {
+   "fieldname": "mode_of_payment",
+   "fieldtype": "Link",
+   "label": "Mode of Payment",
+   "options": "Mode of Payment"
+  },
+  {
+   "fieldname": "reference_no",
+   "fieldtype": "Data",
+   "label": "Reference No"
+  },
+  {
+   "fieldname": "reference_date",
+   "fieldtype": "Date",
+   "label": "Reference Date"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  },
+  {
+   "fieldname": "external_reference",
+   "fieldtype": "Data",
+   "label": "External Reference"
+  },
+  {
+   "fieldname": "idempotency_key",
+   "fieldtype": "Data",
+   "label": "Idempotency Key",
+   "unique": 1
+  },
+  {
+   "fieldname": "posting_status",
+   "fieldtype": "Select",
+   "label": "Posting Status",
+   "options": "Draft\nPosted\nFailed\nCancelled",
+   "read_only": 1
+  },
+  {
+   "fieldname": "payment_entry",
+   "fieldtype": "Link",
+   "label": "Payment Entry",
+   "options": "Payment Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "journal_entry",
+   "fieldtype": "Link",
+   "label": "Journal Entry",
+   "options": "Journal Entry",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-04-23 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Umre Ops",
+ "name": "Umre Booking Payment",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "DESC"
+}
+
