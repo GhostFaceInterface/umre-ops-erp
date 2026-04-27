@@ -28,6 +28,13 @@ app_license = "mit"
 # app_include_css = "/assets/umre_ops/css/umre_ops.css"
 # app_include_js = "/assets/umre_ops/js/umre_ops.js"
 
+# Umre Financial Dashboard — mounted on the "Umre Operasyon Paneli" workspace.
+# We deliberately load these on every desk page so the panel can self-detect
+# its target workspace via route changes; they are tiny and route-gated.
+app_include_css = ["/assets/umre_ops/css/umre_cost_dashboard.css"]
+app_include_js = ["/assets/umre_ops/js/umre_cost_dashboard.js"]
+
+
 # include js, css files in header of web template
 # web_include_css = "/assets/umre_ops/css/umre_ops.css"
 # web_include_js = "/assets/umre_ops/js/umre_ops.js"

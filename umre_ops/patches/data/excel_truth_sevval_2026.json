@@ -1,0 +1,645 @@
+{
+  "tour_pattern": "Şevval%",
+  "source_excel": "umre.xlsx",
+  "rows": [
+    {
+      "tc": "10205468208",
+      "adi": "EMRULLAH",
+      "soyadi": "SİNCAR",
+      "statu": "HOCA",
+      "ucret": 0.0,
+      "manual_cost": 1223.0
+    },
+    {
+      "tc": "10782135456",
+      "adi": "ABDULHAK",
+      "soyadi": "ERSÖZ",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "11105102506",
+      "adi": "FATMA",
+      "soyadi": "ELMAZ",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "11297791298",
+      "adi": "HANIMİ",
+      "soyadi": "ÖZKAN",
+      "statu": "UMRECI",
+      "ucret": 1400.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "11779827866",
+      "adi": "YURDAGÜL",
+      "soyadi": "TÜREN",
+      "statu": "UMRECI",
+      "ucret": 1400.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "11807850842",
+      "adi": "BİRGÜL",
+      "soyadi": "KALKAN",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "11809826814",
+      "adi": "MEHMET ŞERİF",
+      "soyadi": "TÜREN",
+      "statu": "UMRECI",
+      "ucret": 1400.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "11817158440",
+      "adi": "BAKİ",
+      "soyadi": "ÖZTÜRK",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "11891848022",
+      "adi": "GÜLPERİ",
+      "soyadi": "KALKAN",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "11987332442",
+      "adi": "BEHİYE",
+      "soyadi": "ÖZTÜRK",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "13662096946",
+      "adi": "MUHAMMED",
+      "soyadi": "ÖZTÜRK",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "14216745044",
+      "adi": "ENES",
+      "soyadi": "AKBULUT",
+      "statu": "UMRECI",
+      "ucret": 1450.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "16094686976",
+      "adi": "ZEKİYE",
+      "soyadi": "FİDAN",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "16184683984",
+      "adi": "MEMNÜNE",
+      "soyadi": "FİDAN",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "16436677358",
+      "adi": "SADİYE",
+      "soyadi": "BARIN",
+      "statu": "UMRECI",
+      "ucret": 1450.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "16828659634",
+      "adi": "NÜRİYE",
+      "soyadi": "ATICI",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "17087655672",
+      "adi": "MUHSİNE",
+      "soyadi": "ORAL",
+      "statu": "UMRECI",
+      "ucret": 1450.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "18644004322",
+      "adi": "FİLİZ",
+      "soyadi": "POLAT",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "21902760434",
+      "adi": "PEYRUZE",
+      "soyadi": "DEMİR",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "26816324192",
+      "adi": "HAVLİYE",
+      "soyadi": "NAZ",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "27469305354",
+      "adi": "BESRANUR",
+      "soyadi": "TÜREN",
+      "statu": "UMRECI",
+      "ucret": 1400.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "29726548610",
+      "adi": "ESRA",
+      "soyadi": "SİNCAR",
+      "statu": "HOCA_ESI",
+      "ucret": 0.0,
+      "manual_cost": 1223.0
+    },
+    {
+      "tc": "31373121832",
+      "adi": "GÜLİSTAN",
+      "soyadi": "ÖZKAN",
+      "statu": "UMRECI",
+      "ucret": 1400.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "32333140740",
+      "adi": "KÜBRA",
+      "soyadi": "KAHRAMAN",
+      "statu": "UMRECI",
+      "ucret": 1450.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "32690128832",
+      "adi": "LEMAN",
+      "soyadi": "KAHRAMAN",
+      "statu": "UMRECI",
+      "ucret": 1450.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "33548382208",
+      "adi": "ALİYA",
+      "soyadi": "BİLMEN",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "33863422382",
+      "adi": "SULTAN",
+      "soyadi": "ÖZTÜRK",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "35003078084",
+      "adi": "BÜŞRA",
+      "soyadi": "FİLİZ",
+      "statu": "UMRECI",
+      "ucret": 1450.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "36452008424",
+      "adi": "ABDULMELEK",
+      "soyadi": "ÇINAR",
+      "statu": "UMRECI",
+      "ucret": 1450.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "36635002218",
+      "adi": "ŞÜKRAN",
+      "soyadi": "ARSLAN",
+      "statu": "UMRECI",
+      "ucret": 1450.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "37006989800",
+      "adi": "SELAHATTİN",
+      "soyadi": "ARSLAN",
+      "statu": "UMRECI",
+      "ucret": 1450.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "39409539798",
+      "adi": "ESMA",
+      "soyadi": "POLAT",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "40240144324",
+      "adi": "YUSUF",
+      "soyadi": "SİNCAR",
+      "statu": "HOCA_COCUGU",
+      "ucret": 0.0,
+      "manual_cost": 700.0
+    },
+    {
+      "tc": "40324534454",
+      "adi": "ZEYNEP",
+      "soyadi": "ÖZKAN",
+      "statu": "UMRECI",
+      "ucret": 1400.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "41566344238",
+      "adi": "NURTEN",
+      "soyadi": "İÇİNÖZBEBEK",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "41572343492",
+      "adi": "SULTANE",
+      "soyadi": "UCUZ",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "41593832128",
+      "adi": "FEHİME",
+      "soyadi": "AKINCI",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "42670745140",
+      "adi": "FATMA",
+      "soyadi": "BORKURT",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "42775145050",
+      "adi": "ŞÖHRET",
+      "soyadi": "TEPELİ",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "43375794518",
+      "adi": "ÇİÇEK",
+      "soyadi": "ÇOBAN",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "46036658952",
+      "adi": "HEDİYE",
+      "soyadi": "ZİLANOĞLU",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "46850005918",
+      "adi": "MAKBULE MİHRA",
+      "soyadi": "KUŞ",
+      "statu": "UMRECI",
+      "ucret": 850.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "46903661870",
+      "adi": "SEBİLE",
+      "soyadi": "GÜNDOĞDU",
+      "statu": "UMRECI",
+      "ucret": 1450.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "47512630592",
+      "adi": "KADRİYE",
+      "soyadi": "GELİNCİK",
+      "statu": "UMRECI",
+      "ucret": 1450.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "47665234906",
+      "adi": "BİRGÜL",
+      "soyadi": "ÜZÜMCÜ",
+      "statu": "UMRECI",
+      "ucret": 1450.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "48013617426",
+      "adi": "GÜLSEREN",
+      "soyadi": "SÜMER",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "48346613218",
+      "adi": "MÜZEYYEN",
+      "soyadi": "BULAKBAŞI",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "49189927920",
+      "adi": "MÜZEYYEN",
+      "soyadi": "ÖZTÜRK",
+      "statu": "UMRECI",
+      "ucret": 850.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "50389545616",
+      "adi": "FATİH",
+      "soyadi": "GÜNDOĞDU",
+      "statu": "UMRECI",
+      "ucret": 1450.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "50869042420",
+      "adi": "EYLÜL İKRA",
+      "soyadi": "ÖNEN",
+      "statu": "UMRECI",
+      "ucret": 850.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "51052517152",
+      "adi": "EMİNE",
+      "soyadi": "AKGÜL",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "51082035688",
+      "adi": "FERHAN",
+      "soyadi": "ÖNEN",
+      "statu": "UMRECI",
+      "ucret": 850.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "51115515028",
+      "adi": "SUAT",
+      "soyadi": "AKGÜL",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "51355507034",
+      "adi": "ESYE",
+      "soyadi": "AKGÜL",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "51367506698",
+      "adi": "EMİNE",
+      "soyadi": "AKGÜL",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "52684187898",
+      "adi": "İSMAİL",
+      "soyadi": "GÜNGER",
+      "statu": "UMRECI",
+      "ucret": 1450.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "53310111422",
+      "adi": "SULTAN",
+      "soyadi": "YAKUT",
+      "statu": "UMRECI",
+      "ucret": 1400.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "53857423782",
+      "adi": "SEHER",
+      "soyadi": "AKBULUT",
+      "statu": "UMRECI",
+      "ucret": 1450.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "54037443224",
+      "adi": "HANIM",
+      "soyadi": "SAVAŞ",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "55870501966",
+      "adi": "EMİNE",
+      "soyadi": "TAYLAN",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "56701331714",
+      "adi": "MAKBULE",
+      "soyadi": "GÜNGER",
+      "statu": "UMRECI",
+      "ucret": 1450.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "58903254938",
+      "adi": "MEHMET",
+      "soyadi": "ÇAKMAK",
+      "statu": "UMRECI",
+      "ucret": 1450.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "59089249220",
+      "adi": "HATİCE",
+      "soyadi": "ÇELİK",
+      "statu": "UMRECI",
+      "ucret": 1400.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "59413235710",
+      "adi": "EDİBE",
+      "soyadi": "TUNÇ",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "59626227582",
+      "adi": "ZAHİDE",
+      "soyadi": "AKAY",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "59875222178",
+      "adi": "FATMA",
+      "soyadi": "KURT",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "59899221768",
+      "adi": "EMEL",
+      "soyadi": "ÇAKMAK",
+      "statu": "UMRECI",
+      "ucret": 1450.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "62140423866",
+      "adi": "MUHAMMED",
+      "soyadi": "FİLİZ",
+      "statu": "UMRECI",
+      "ucret": 850.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "62806130220",
+      "adi": "EYYUP",
+      "soyadi": "ÖNEN",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "62818127836",
+      "adi": "HAYRETTİN",
+      "soyadi": "YAKUT",
+      "statu": "UMRECI",
+      "ucret": 1400.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "62887125504",
+      "adi": "KASİDE",
+      "soyadi": "YAKUT",
+      "statu": "UMRECI",
+      "ucret": 1400.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "65068056130",
+      "adi": "HAMİŞ",
+      "soyadi": "KUŞ",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "65071058066",
+      "adi": "MERVE",
+      "soyadi": "ÖNEN",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "65515041276",
+      "adi": "EMİNE",
+      "soyadi": "ÖZTÜRK",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "65578039104",
+      "adi": "SÜREYYA",
+      "soyadi": "ÖZTÜRK",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "65584038986",
+      "adi": "AFİF",
+      "soyadi": "ÖZTÜRK",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "66016043950",
+      "adi": "YILDIZ",
+      "soyadi": "KALKAN",
+      "statu": "FREE",
+      "ucret": 0.0,
+      "manual_cost": 1080.0
+    },
+    {
+      "tc": "67459169726",
+      "adi": "GÜLÇİN",
+      "soyadi": "GÖZEL",
+      "statu": "UMRECI",
+      "ucret": 1350.0,
+      "manual_cost": 0.0
+    },
+    {
+      "tc": "72028093494",
+      "adi": "HAKİM",
+      "soyadi": "FİLİZ",
+      "statu": "UMRECI",
+      "ucret": 1450.0,
+      "manual_cost": 0.0
+    }
+  ],
+  "summary": {
+    "total_rows": 79,
+    "umreci_count": 75,
+    "non_umreci_count": 4,
+    "umreci_revenue_total": 101150.0,
+    "non_umreci_manual_cost_total": 4226.0
+  }
+}

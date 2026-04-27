@@ -267,19 +267,40 @@ def post_booking_costs_journal_entry(
 		)
 	posting_date = posting_date or nowdate()
 
-	components = [
-		("hotel", flt(getattr(booking, "otel_maliyeti", 0) or 0), mapping.hotel_expense_account),
-		("flight", flt(getattr(booking, "ucak_maliyeti", 0) or 0), mapping.flight_expense_account),
-		("visa", flt(getattr(booking, "vize_maliyeti", 0) or 0), mapping.visa_expense_account),
-		("diyanet", flt(getattr(booking, "diyanet_maliyeti", 0) or 0), mapping.diyanet_expense_account),
-	]
+	# Costs are sourced from the component-based engine. Group component
+	# rows by `cost_type` so each cost type maps to a single JE line and a
+	# single expense account in `Umre Ops Settings`.
+	comp_rows = frappe.db.sql(
+		"""
+		SELECT cost_type, SUM(amount) AS total
+		FROM `tabCost Component`
+		WHERE booking = %s
+		GROUP BY cost_type
+		""",
+		(booking_name,),
+		as_dict=True,
+	)
+	cost_type_to_account = {
+		"HOTEL":   mapping.hotel_expense_account,
+		"FLIGHT":  mapping.flight_expense_account,
+		"VISA":    mapping.visa_expense_account,
+		"DIYANET": mapping.diyanet_expense_account,
+		# MEAL / OTHER / MANUAL / future ad-hoc types fall back to the
+		# generic operational expense account if no dedicated mapping exists.
+		"MEAL":    mapping.commission_expense_account,
+		"OTHER":   mapping.commission_expense_account,
+		"MANUAL":  mapping.commission_expense_account,
+	}
 	lines: list[dict[str, Any]] = []
 	total = 0.0
-	for key, amt, acc in components:
+	for row in comp_rows:
+		amt = flt(row["total"] or 0)
 		if not amt:
 			continue
+		cost_type = row["cost_type"]
+		acc = cost_type_to_account.get(cost_type) or mapping.commission_expense_account
 		if not acc:
-			frappe.throw(_("Missing expense account mapping for {0}. Configure Umre Ops Settings.").format(key))
+			frappe.throw(_("Missing expense account mapping for cost type {0}. Configure Umre Ops Settings.").format(cost_type))
 		lines.append({"account": acc, "debit_in_account_currency": amt, "cost_center": cc})
 		total += amt
 

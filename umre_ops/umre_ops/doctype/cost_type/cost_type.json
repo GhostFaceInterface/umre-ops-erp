@@ -1,0 +1,99 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:cost_type_code",
+ "creation": "2026-04-26 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "cost_type_code",
+  "cost_type_name",
+  "is_revenue_negating",
+  "default_currency",
+  "description",
+  "is_system_managed",
+  "sort_order"
+ ],
+ "fields": [
+  {
+   "fieldname": "cost_type_code",
+   "fieldtype": "Data",
+   "label": "Cost Type Code",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "description": "Stable upper-case code, e.g. HOTEL, FLIGHT, MEAL. Used as join key by the cost engine."
+  },
+  {
+   "fieldname": "cost_type_name",
+   "fieldtype": "Data",
+   "label": "Display Name",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "is_revenue_negating",
+   "fieldtype": "Check",
+   "label": "Reduces Profit",
+   "default": "1",
+   "in_list_view": 1,
+   "description": "Standard expense components reduce profit. Reserve uncheck for special bookkeeping types."
+  },
+  {
+   "fieldname": "default_currency",
+   "fieldtype": "Link",
+   "label": "Default Currency",
+   "options": "Currency",
+   "default": "USD"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "is_system_managed",
+   "fieldtype": "Check",
+   "label": "System Managed",
+   "default": "0",
+   "description": "1 = the cost engine auto-generates this type; 0 = ad-hoc / operator-added."
+  },
+  {
+   "fieldname": "sort_order",
+   "fieldtype": "Int",
+   "label": "Sort Order",
+   "default": "100",
+   "description": "Display order in reports and breakdowns."
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-04-26 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Umre Ops",
+ "name": "Cost Type",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "sort_order",
+ "sort_order": "ASC",
+ "states": [],
+ "track_changes": 1
+}

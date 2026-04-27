@@ -33,7 +33,10 @@
   "kar",
   "not",
   "diyanet_kart_var",
-  "diyanet_maliyeti"
+  "diyanet_maliyeti",
+  "financial_lock_section",
+  "is_imported",
+  "locked_financials"
  ],
  "fields": [
   {
@@ -132,25 +135,37 @@
    "fieldname": "otel_maliyeti",
    "fieldtype": "Currency",
    "label": "Otel Maliyeti",
-   "options": "Umre Tour:tur:para_birimi"
+   "options": "Umre Tour:tur:para_birimi",
+   "read_only": 1,
+   "hidden": 1,
+   "description": "DEPRECATED — kept for historical snapshot only. The component-based cost engine writes to `Cost Component`; reports and accounting read from there. Do not edit or rely on this field."
   },
   {
    "fieldname": "vize_maliyeti",
    "fieldtype": "Currency",
    "label": "Vize Maliyeti",
-   "options": "Umre Tour:tur:para_birimi"
+   "options": "Umre Tour:tur:para_birimi",
+   "read_only": 1,
+   "hidden": 1,
+   "description": "DEPRECATED — kept for historical snapshot only. The component-based cost engine writes to `Cost Component`; reports and accounting read from there. Do not edit or rely on this field."
   },
   {
    "fieldname": "toplam_maliyet",
    "fieldtype": "Currency",
    "label": "Toplam Maliyet",
-   "options": "Umre Tour:tur:para_birimi"
+   "options": "Umre Tour:tur:para_birimi",
+   "read_only": 1,
+   "hidden": 1,
+   "description": "DEPRECATED — kept for historical snapshot only. The component-based cost engine writes to `Cost Component`; reports and accounting read from there. Do not edit or rely on this field."
   },
   {
    "fieldname": "kar",
    "fieldtype": "Currency",
    "label": "Kar",
-   "options": "Umre Tour:tur:para_birimi"
+   "options": "Umre Tour:tur:para_birimi",
+   "read_only": 1,
+   "hidden": 1,
+   "description": "DEPRECATED — kept for historical snapshot only. The component-based cost engine writes to `Cost Component`; reports and accounting read from there. Do not edit or rely on this field."
   },
   {
    "fieldname": "ucret",
@@ -198,19 +213,48 @@
    "fieldname": "ucak_maliyeti",
    "fieldtype": "Currency",
    "label": "Uçak Maliyeti",
-   "options": "Umre Tour:tur:para_birimi"
+   "options": "Umre Tour:tur:para_birimi",
+   "read_only": 1,
+   "hidden": 1,
+   "description": "DEPRECATED — kept for historical snapshot only. The component-based cost engine writes to `Cost Component`; reports and accounting read from there. Do not edit or rely on this field."
   },
   {
    "fieldname": "diyanet_maliyeti",
    "fieldtype": "Currency",
    "label": "Diyanet Maliyeti",
-   "options": "Umre Tour:tur:para_birimi"
+   "options": "Umre Tour:tur:para_birimi",
+   "read_only": 1,
+   "hidden": 1,
+   "description": "DEPRECATED — kept for historical snapshot only. The component-based cost engine writes to `Cost Component`; reports and accounting read from there. Do not edit or rely on this field."
   },
   {
    "default": 0,
    "fieldname": "diyanet_kart_var",
    "fieldtype": "Check",
    "label": "Diyanet kart var"
+  },
+  {
+   "fieldname": "financial_lock_section",
+   "fieldtype": "Section Break",
+   "label": "Finansal Kilit",
+   "collapsible": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_imported",
+   "fieldtype": "Check",
+   "label": "Excel'den İçeri Aktarıldı",
+   "read_only": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "locked_financials",
+   "fieldtype": "Check",
+   "label": "Finansal Kilit (Değiştirilemez)",
+   "read_only": 1,
+   "in_standard_filter": 1,
+   "description": "1 olduğunda statu, ücret ve manuel maliyet alanları DEĞİŞTİRİLEMEZ. Excel doğruluğu için."
   }
  ],
  "grid_page_length": 50,

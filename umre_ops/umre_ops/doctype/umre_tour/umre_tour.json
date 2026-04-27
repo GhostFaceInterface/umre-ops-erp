@@ -19,7 +19,17 @@
   "iki_kisilik_oda",
   "uc_kisilik_oda",
   "dort_kisilik_oda",
-  "para_birimi"
+  "para_birimi",
+  "operasyonel_gunler_section",
+  "mekke_days",
+  "medine_days",
+  "col_break_meal_1",
+  "mekke_meal_price_sar",
+  "medine_meal_price_sar",
+  "col_break_meal_2",
+  "sar_to_usd_rate",
+  "other_cost_per_person",
+  "sar_currency"
  ],
  "fields": [
   {
@@ -39,7 +49,7 @@
    "fieldname": "tur_adi",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Tur Ad\u0131",
+   "label": "Tur Adı",
    "reqd": 1,
    "unique": 1
   },
@@ -48,7 +58,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Umre Tipi",
-   "options": "Normal\nRamazan\n\u015eevval\nS\u00f6mestir\nYaz\nArac\u0131 Olduklar\u0131m\u0131z\nAktarmas\u0131z\nDi\u011fer",
+   "options": "Normal\nRamazan\nŞevval\nSömestir\nYaz\nAracı Olduklarımız\nAktarmasız\nDiğer",
    "reqd": 1
   },
   {
@@ -56,19 +66,19 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Durum",
-   "options": "Taslak\nAktif\nKapand\u0131\n\u0130ptal\nTamamland\u0131",
+   "options": "Taslak\nAktif\nKapandı\nİptal\nTamamlandı",
    "reqd": 1
   },
   {
    "fieldname": "baslangic_tarihi",
    "fieldtype": "Date",
-   "label": "Ba\u015flang\u0131\u00e7 Tarihi",
+   "label": "Başlangıç Tarihi",
    "reqd": 1
   },
   {
    "fieldname": "bitis_tarihi",
    "fieldtype": "Date",
-   "label": "Biti\u015f Tarihi",
+   "label": "Bitiş Tarihi",
    "reqd": 1
   },
   {
@@ -85,25 +95,25 @@
   {
    "fieldname": "bir_kisilik_oda",
    "fieldtype": "Currency",
-   "label": "1 ki\u015filik oda",
+   "label": "1 kişilik oda",
    "options": "para_birimi"
   },
   {
    "fieldname": "iki_kisilik_oda",
    "fieldtype": "Currency",
-   "label": "2 ki\u015filik oda",
+   "label": "2 kişilik oda",
    "options": "para_birimi"
   },
   {
    "fieldname": "uc_kisilik_oda",
    "fieldtype": "Currency",
-   "label": "3 ki\u015filik oda",
+   "label": "3 kişilik oda",
    "options": "para_birimi"
   },
   {
    "fieldname": "dort_kisilik_oda",
    "fieldtype": "Currency",
-   "label": "4 ki\u015filik oda",
+   "label": "4 kişilik oda",
    "options": "para_birimi"
   },
   {
@@ -112,6 +122,71 @@
    "label": "Para Birimi",
    "options": "Currency",
    "reqd": 1
+  },
+  {
+   "fieldname": "operasyonel_gunler_section",
+   "fieldtype": "Section Break",
+   "label": "Operasyonel Günler ve Yemek"
+  },
+  {
+   "fieldname": "mekke_days",
+   "fieldtype": "Int",
+   "label": "Mekke Gün Sayısı",
+   "default": "0"
+  },
+  {
+   "fieldname": "medine_days",
+   "fieldtype": "Int",
+   "label": "Medine Gün Sayısı",
+   "default": "0"
+  },
+  {
+   "fieldname": "col_break_meal_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "mekke_meal_price_sar",
+   "fieldtype": "Currency",
+   "label": "Mekke Günlük Yemek (SAR)",
+   "options": "sar_currency",
+   "default": "0"
+  },
+  {
+   "fieldname": "medine_meal_price_sar",
+   "fieldtype": "Currency",
+   "label": "Medine Günlük Yemek (SAR)",
+   "options": "sar_currency",
+   "default": "0"
+  },
+  {
+   "fieldname": "col_break_meal_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "sar_to_usd_rate",
+   "fieldtype": "Float",
+   "label": "SAR → USD Kuru",
+   "precision": "6",
+   "default": "3.75",
+   "description": "Mekke/Medine yemek bedeli SAR cinsinden girilir; bu oran ile USD'a çevrilir."
+  },
+  {
+   "fieldname": "other_cost_per_person",
+   "fieldtype": "Currency",
+   "label": "Kişi Başı Diğer Maliyet",
+   "options": "para_birimi",
+   "default": "0",
+   "description": "Tur kapsamında her UMRECI için sabit ek maliyet (örn. transfer, hediye)."
+  },
+  {
+   "fieldname": "sar_currency",
+   "fieldtype": "Link",
+   "options": "Currency",
+   "label": "SAR Helper",
+   "default": "SAR",
+   "hidden": 1,
+   "read_only": 1,
+   "print_hide": 1
   }
  ],
  "grid_page_length": 50,

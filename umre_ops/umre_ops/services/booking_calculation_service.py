@@ -1,10 +1,32 @@
 # Copyright (c) 2026, Sermed Turizm and contributors
 # For license information, please see license.txt
 """
-Server-side source of truth for `Umre Booking` pricing and cost fields.
+Read-only financial view for `Umre Booking`.
 
-Replaces ad-hoc client-only logic so API, import, and form saves stay aligned.
-Assumptions are documented inline; adjust if your operational rules differ.
+DESIGN INTENT
+-------------
+This module USED to mutate `Umre Booking` rows on every save: rewriting `ucret`
+from the tour's room price, recomputing `otel_maliyeti` / `ucak_maliyeti` /
+`vize_maliyeti` / `diyanet_maliyeti` / `toplam_maliyet` / `kar`, and even
+zeroing `ucret` for non-paying participants. That mutation pipeline was the
+root cause of two distinct revenue-drift bugs (status flips and `ucret`
+overwrites) confirmed in forensic reports. It has been REMOVED.
+
+The new contract is:
+
+* The booking is the *imported truth*. Its three financial inputs
+  (`statu`, `ucret`, `manual_cost`) are immutable after import (gated by
+  `Umre Booking.locked_financials` and the document-level guard).
+* This service NEVER writes to financial fields. It only:
+    - Sets `vize_tipi` to its UI default if missing.
+    - Infers `yolcu_tipi` from `Umreci.dogum_tarihi` once when empty.
+* All revenue / cost / profit numbers are derived on demand by
+  `BookingCalculationService.compute_view(doc)`, which returns a snapshot
+  dict and DOES NOT touch `doc`. The Tour Revenue Summary report and the
+  desk preview API are the only consumers of this snapshot.
+
+If you need to "save the totals" again, do it in an explicit, audited path
+(a manual recompute action). Do NOT add it to validate().
 """
 from __future__ import annotations
 
@@ -15,13 +37,15 @@ from typing import Any
 import frappe
 from frappe.utils import cint, flt, getdate
 
-# Must match `Tour Passenger Cost Rule.expense_component` options (first line = flight).
 UCAK_COMPONENT = "U\u00e7ak"
 PAYING_STATUS = "UMRECI"
 
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
 def _parse_oda_index(oda_tipi: str | None) -> int:
-	"""Map `oda_tipi` (e.g. '1 Kişilik' / '1') to 1|2|3|4."""
 	if not oda_tipi:
 		return 1
 	m = re.match(r"^(\d+)", str(oda_tipi).strip())
@@ -41,7 +65,6 @@ def _tour_field_for_oda(idx: int) -> str:
 
 
 def _rule_field_for_oda_maaliyet(idx: int) -> str:
-	"""`Tour Hotel Cost Rule` per-occupancy cost column names (ASCII, post-normalization)."""
 	return {
 		1: "bir_kisilik_oda_maaliyeti",
 		2: "iki_kisilik_oda_maliyeti",
@@ -58,15 +81,9 @@ def _age_on_date(birth: date, on: date) -> int:
 
 
 def infer_yolcu_tipi_from_umreci(umreci_name: str | None, tour_start: date | None) -> str | None:
-	"""Heuristic: set Çocuk/Bebek/Normal from date of birth vs tour start when possible."""
 	if not (umreci_name and tour_start):
 		return None
-	ur = frappe.db.get_value(
-		"Umreci",
-		umreci_name,
-		["dogum_tarihi"],
-		as_dict=True,
-	)
+	ur = frappe.db.get_value("Umreci", umreci_name, ["dogum_tarihi"], as_dict=True)
 	if not ur or not ur.get("dogum_tarihi"):
 		return None
 	bd = getdate(ur["dogum_tarihi"])
@@ -78,163 +95,156 @@ def infer_yolcu_tipi_from_umreci(umreci_name: str | None, tour_start: date | Non
 	return "Normal"
 
 
+# ---------------------------------------------------------------------------
+# Pure cost lookups (read-only)
+# ---------------------------------------------------------------------------
+
+def _tour_doc(tur: str | None):
+	if not tur or not frappe.db.exists("Umre Tour", tur):
+		return None
+	return frappe.get_doc("Umre Tour", tur)
+
+
+def lookup_hotel_cost(tur: str | None, oda_tipi: str | None) -> float:
+	if not tur:
+		return 0.0
+	idx = _parse_oda_index(oda_tipi)
+	field = _rule_field_for_oda_maaliyet(idx)
+	rules = frappe.get_all("Tour Hotel Cost Rule", filters={"tur": tur}, pluck="name")
+	total = 0.0
+	for rname in rules:
+		row = frappe.db.get_value("Tour Hotel Cost Rule", rname, [field], as_dict=True)
+		if row and row.get(field) is not None:
+			total += flt(row[field])
+	return flt(total)
+
+
+def lookup_flight_cost(tur: str | None, yolcu_tipi: str | None) -> float:
+	if not (tur and yolcu_tipi):
+		return 0.0
+	name = frappe.db.get_value(
+		"Tour Passenger Cost Rule",
+		{"tur": tur, "yolcu_tipi": yolcu_tipi, "expense_component": UCAK_COMPONENT},
+		"name",
+	)
+	if not name:
+		return 0.0
+	return flt(frappe.db.get_value("Tour Passenger Cost Rule", name, "tutar") or 0)
+
+
+def lookup_visa_cost(tur: str | None, vize_tipi: str | None) -> float:
+	if not (tur and vize_tipi):
+		return 0.0
+	name = frappe.db.get_value(
+		"Tour Visa Cost Rule",
+		{"tur": tur, "vize_tipi": vize_tipi},
+		"name",
+	)
+	if not name:
+		return 0.0
+	return flt(frappe.db.get_value("Tour Visa Cost Rule", name, "tutar") or 0)
+
+
+def lookup_diyanet_cost(tur: str | None, diyanet_kart_var: int | None) -> float:
+	if not tur or not cint(diyanet_kart_var):
+		return 0.0
+	name = frappe.db.get_value("Tour Diyanet Card Rule", {"tur": tur}, "name")
+	if not name:
+		return 0.0
+	return flt(frappe.db.get_value("Tour Diyanet Card Rule", name, "tutar") or 0)
+
+
+# ---------------------------------------------------------------------------
+# Read-only service
+# ---------------------------------------------------------------------------
+
 class BookingCalculationService:
-	"""Applies all automatic fields on a booking document (mutates in place)."""
+	"""Soft passenger-default applier (read-only for finance)."""
 
 	__slots__ = ("doc",)
 
 	def __init__(self, doc: Any):
 		self.doc = doc
 
+	# Mutation surface — strictly limited to non-financial UI defaults.
 	def apply(self) -> None:
+		"""Set safe, non-financial defaults. NEVER touches statu/ucret/cost.
+
+		Mutated fields (UI defaults only):
+			- vize_tipi (default "Umre" when empty)
+			- yolcu_tipi (inferred once from Umreci birth date when empty)
+		"""
 		self._apply_passenger_defaults()
-		if not self._is_paying_customer():
-			self._apply_non_paying_rules()
-			return
-		self.doc.manual_cost = None
-		self._set_ucret_from_tour()
-		self._set_otel_maliyeti()
-		self._set_ucak_maliyeti()
-		self._set_vize_maliyeti()
-		self._set_diyanet()
-		self._set_totals()
-
-	def _status(self) -> str:
-		status = (self.doc.get("statu") or PAYING_STATUS).strip()
-		return status or PAYING_STATUS
-
-	def _is_paying_customer(self) -> bool:
-		return self._status() == PAYING_STATUS
-
-	def _apply_non_paying_rules(self) -> None:
-		manual_cost = flt(self.doc.get("manual_cost") or 0)
-		self.doc.ucret = 0.0
-		self.doc.otel_maliyeti = 0.0
-		self.doc.ucak_maliyeti = 0.0
-		self.doc.vize_maliyeti = 0.0
-		self.doc.diyanet_maliyeti = 0.0
-		self.doc.toplam_maliyet = manual_cost
-		self.doc.kar = flt(0 - manual_cost - flt(self.doc.kms or 0))
-
-	def _tour(self):
-		if not self.doc.tur or not frappe.db.exists("Umre Tour", self.doc.tur):
-			return None
-		return frappe.get_doc("Umre Tour", self.doc.tur)
-
-	def _tour_start(self) -> date | None:
-		t = self._tour()
-		if t and t.get("baslangic_tarihi"):
-			return getdate(t.baslangic_tarihi)
-		return None
 
 	def _apply_passenger_defaults(self) -> None:
-		"""
-		When `umreci` and `tur` are set, optionally infer `yolcu_tipi` (only if empty).
-		Default `vize_tipi` to 'Umre' if unset (matches DocType default).
-		"""
 		if not self.doc.get("vize_tipi"):
 			self.doc.vize_tipi = "Umre"
 		if self.doc.get("yolcu_tipi") or not self.doc.get("umreci"):
 			return
-		start = self._tour_start()
+		t = _tour_doc(self.doc.get("tur"))
+		start = getdate(t.baslangic_tarihi) if t and t.get("baslangic_tarihi") else None
 		inferred = infer_yolcu_tipi_from_umreci(self.doc.umreci, start)
 		if inferred:
 			self.doc.yolcu_tipi = inferred
 
-	def _set_ucret_from_tour(self) -> None:
-		"""List price on the selected tour for the room capacity (`oda_tipi`)."""
-		t = self._tour()
-		if not t:
-			return
-		idx = _parse_oda_index(self.doc.get("oda_tipi"))
-		field = _tour_field_for_oda(idx)
-		self.doc.ucret = flt(getattr(t, field, None) or 0)
+	# Read surface — pure functions.
+	@staticmethod
+	def compute_view(doc) -> dict:
+		"""Return the immutable financial view of a booking. NO mutation.
 
-	def _set_otel_maliyeti(self) -> None:
+		Strict business model:
+			UMRECI:     revenue = ucret
+			            cost    = hotel + flight + visa + diyanet
+			NON-UMRECI: revenue = 0
+			            cost    = manual_cost
+			profit = revenue - cost
 		"""
-		Sum per-person hotel cost from all `Tour Hotel Cost Rule` rows for this tour
-		that match the booking's room size (column selected by `oda_tipi`).
-		"""
-		if not self.doc.tur:
-			return
-		idx = _parse_oda_index(self.doc.get("oda_tipi"))
-		field = _rule_field_for_oda_maaliyet(idx)
-		rules = frappe.get_all(
-			"Tour Hotel Cost Rule",
-			filters={"tur": self.doc.tur},
-			pluck="name",
-		)
-		total = 0.0
-		for rname in rules:
-			row = frappe.db.get_value("Tour Hotel Cost Rule", rname, [field], as_dict=True)
-			if row and row.get(field) is not None:
-				total += flt(row[field])
-		self.doc.otel_maliyeti = flt(total)
+		statu = (doc.get("statu") or PAYING_STATUS).strip() or PAYING_STATUS
+		is_umreci = statu == PAYING_STATUS
+		tur = doc.get("tur")
+		oda_tipi = doc.get("oda_tipi")
+		yolcu_tipi = doc.get("yolcu_tipi")
+		vize_tipi = doc.get("vize_tipi")
+		diyanet_kart_var = doc.get("diyanet_kart_var")
 
-	def _set_ucak_maliyeti(self) -> None:
-		"""`Tour Passenger Cost Rule` row: flight segment for this tour + passenger type."""
-		if not (self.doc.tur and self.doc.get("yolcu_tipi")):
-			return
-		name = frappe.db.get_value(
-			"Tour Passenger Cost Rule",
-			{
-				"tur": self.doc.tur,
-				"yolcu_tipi": self.doc.yolcu_tipi,
-				"expense_component": UCAK_COMPONENT,
-			},
-			"name",
-		)
-		if not name:
-			self.doc.ucak_maliyeti = 0.0
-			return
-		self.doc.ucak_maliyeti = flt(
-			frappe.db.get_value("Tour Passenger Cost Rule", name, "tutar") or 0
-		)
+		if is_umreci:
+			otel = lookup_hotel_cost(tur, oda_tipi)
+			ucak = lookup_flight_cost(tur, yolcu_tipi)
+			vize = lookup_visa_cost(tur, vize_tipi)
+			diy = lookup_diyanet_cost(tur, diyanet_kart_var)
+			revenue = flt(doc.get("ucret") or 0)
+			cost = flt(otel + ucak + vize + diy)
+			manual = 0.0
+		else:
+			otel = 0.0
+			ucak = 0.0
+			vize = 0.0
+			diy = 0.0
+			revenue = 0.0
+			manual = flt(doc.get("manual_cost") or 0)
+			cost = manual
 
-	def _set_vize_maliyeti(self) -> None:
-		if not (self.doc.tur and self.doc.get("vize_tipi")):
-			return
-		name = frappe.db.get_value(
-			"Tour Visa Cost Rule",
-			{"tur": self.doc.tur, "vize_tipi": self.doc.vize_tipi},
-			"name",
-		)
-		if not name:
-			self.doc.vize_maliyeti = 0.0
-			return
-		self.doc.vize_maliyeti = flt(frappe.db.get_value("Tour Visa Cost Rule", name, "tutar") or 0)
-
-	def _set_diyanet(self) -> None:
-		if not self._is_paying_customer():
-			self.doc.diyanet_maliyeti = 0.0
-			return
-		if not cint(self.doc.get("diyanet_kart_var")) or not self.doc.tur:
-			self.doc.diyanet_maliyeti = 0.0
-			return
-		name = frappe.db.get_value(
-			"Tour Diyanet Card Rule",
-			{"tur": self.doc.tur},
-			"name",
-		)
-		if not name:
-			self.doc.diyanet_maliyeti = 0.0
-			return
-		self.doc.diyanet_maliyeti = flt(
-			frappe.db.get_value("Tour Diyanet Card Rule", name, "tutar") or 0
-		)
-
-	def _set_totals(self) -> None:
-		otel = flt(self.doc.otel_maliyeti)
-		ucak = flt(self.doc.ucak_maliyeti)
-		vize = flt(self.doc.vize_maliyeti)
-		diy = flt(self.doc.diyanet_maliyeti)
-		self.doc.toplam_maliyet = flt(otel + ucak + vize + diy)
-		# Kâr: listed sales price minus all computed operating costs; KMS treated as an extra
-		# deduction (matches typical desk behaviour where it reduced margin).
-		ucret = flt(self.doc.ucret)
-		kms = flt(self.doc.kms or 0)
-		self.doc.kar = flt(ucret - self.doc.toplam_maliyet - kms)
+		return {
+			"statu": statu,
+			"is_umreci": is_umreci,
+			"revenue": revenue,
+			"otel_maliyeti": otel,
+			"ucak_maliyeti": ucak,
+			"vize_maliyeti": vize,
+			"diyanet_maliyeti": diy,
+			"manual_cost": manual,
+			"toplam_maliyet": cost,
+			"net_kar": flt(revenue - cost),
+			"odenen": flt(doc.get("odenen") or 0),
+			"kalan_alacak": flt(revenue - flt(doc.get("odenen") or 0)),
+		}
 
 
 def apply_to_booking(doc) -> None:
+	"""Document-level entry point. Soft defaults only — no financial mutation."""
 	BookingCalculationService(doc).apply()
+
+
+def compute_booking_view(doc) -> dict:
+	"""Convenience wrapper for the read-only view."""
+	return BookingCalculationService.compute_view(doc)
