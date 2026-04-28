@@ -1,7 +1,7 @@
 {
  "app": "umre_ops",
  "charts": [],
- "content": "[{\"id\":\"umre_ops_title\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Umre Operasyon Paneli</b></span>\",\"col\":12}},{\"id\":\"umre_ops_operation_card\",\"type\":\"card\",\"data\":{\"card_name\":\"OPERASYON\",\"col\":3}},{\"id\":\"umre_ops_cost_card\",\"type\":\"card\",\"data\":{\"card_name\":\"MALİYET\",\"col\":3}},{\"id\":\"umre_ops_accounting_card\",\"type\":\"card\",\"data\":{\"card_name\":\"MUHASEBE\",\"col\":3}},{\"id\":\"umre_ops_settings_card\",\"type\":\"card\",\"data\":{\"card_name\":\"AYARLAR\",\"col\":3}}]",
+ "content": "[{\"id\":\"umre_ops_title\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Umre Operasyon Paneli</b></span>\",\"col\":12}},{\"id\":\"umre_ops_operation_card\",\"type\":\"card\",\"data\":{\"card_name\":\"OPERASYON\",\"col\":3}},{\"id\":\"umre_ops_tur_card\",\"type\":\"card\",\"data\":{\"card_name\":\"TUR MALİYETLERİ\",\"col\":3}},{\"id\":\"umre_ops_genel_gider_card\",\"type\":\"card\",\"data\":{\"card_name\":\"GENEL GİDERLER\",\"col\":3}},{\"id\":\"umre_ops_settings_card\",\"type\":\"card\",\"data\":{\"card_name\":\"AYARLAR\",\"col\":3}}]",
  "custom_blocks": [],
  "docstatus": 0,
  "doctype": "Workspace",
@@ -85,8 +85,8 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "MALİYET",
-   "link_count": 8,
+   "label": "TUR MALİYETLERİ",
+   "link_count": 9,
    "onboard": 0,
    "type": "Card Break",
    "icon": "accounting"
@@ -176,64 +176,6 @@
    "icon": "wallet"
   },
   {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "MUHASEBE",
-   "link_count": 4,
-   "onboard": 0,
-   "type": "Card Break",
-   "icon": "money-coins"
-  },
-  {
-   "dependencies": "",
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Ödeme Kaydı",
-   "link_count": 0,
-   "link_to": "Payment Entry",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link",
-   "icon": "payment"
-  },
-  {
-   "dependencies": "",
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Yevmiye Kaydı",
-   "link_count": 0,
-   "link_to": "Journal Entry",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link",
-   "icon": "file"
-  },
-  {
-   "dependencies": "GL Entry",
-   "hidden": 0,
-   "is_query_report": 1,
-   "label": "General Ledger",
-   "link_count": 0,
-   "link_to": "General Ledger",
-   "link_type": "Report",
-   "onboard": 0,
-   "type": "Link",
-   "icon": "ledger",
-   "report_ref_doctype": "GL Entry"
-  },
-  {
-   "dependencies": "",
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Cost Center",
-   "link_count": 0,
-   "link_to": "Cost Center",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link",
-   "icon": "tree"
-  },
-  {
    "dependencies": "Umre Booking",
    "hidden": 0,
    "is_query_report": 1,
@@ -249,8 +191,135 @@
   {
    "hidden": 0,
    "is_query_report": 0,
+   "label": "GENEL GİDERLER",
+   "link_count": 6,
+   "onboard": 0,
+   "type": "Card Break",
+   "icon": "wallet"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Umre Season",
+   "link_count": 0,
+   "link_to": "Umre Season",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link",
+   "icon": "calendar"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Umre Money Account",
+   "link_count": 0,
+   "link_to": "Umre Money Account",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link",
+   "icon": "money-coins"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Umre Financial Institution",
+   "link_count": 0,
+   "link_to": "Umre Financial Institution",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link",
+   "icon": "company"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Operational Expense Category",
+   "link_count": 0,
+   "link_to": "Operational Expense Category",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link",
+   "icon": "folder-open"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Operational Expense",
+   "link_count": 0,
+   "link_to": "Operational Expense",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link",
+   "icon": "currency"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Cost Center",
+   "link_count": 0,
+   "link_to": "Cost Center",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link",
+   "icon": "tree"
+  },
+  {
+   "hidden": 1,
+   "is_query_report": 0,
+   "label": "Ödeme Kaydı",
+   "link_count": 0,
+   "link_to": "Payment Entry",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link",
+   "icon": "payment"
+  },
+  {
+   "hidden": 1,
+   "is_query_report": 0,
+   "label": "Yevmiye Kaydı",
+   "link_count": 0,
+   "link_to": "Journal Entry",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link",
+   "icon": "file"
+  },
+  {
+   "dependencies": "GL Entry",
+   "hidden": 1,
+   "is_query_report": 1,
+   "label": "General Ledger",
+   "link_count": 0,
+   "link_to": "General Ledger",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link",
+   "icon": "ledger",
+   "report_ref_doctype": "GL Entry"
+  },
+  {
+   "hidden": 1,
+   "is_query_report": 0,
+   "label": "Chart of Accounts",
+   "link_count": 0,
+   "link_to": "Account",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link",
+   "icon": "chart-of-accounts"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "AYARLAR",
-   "link_count": 3,
+   "link_count": 2,
    "onboard": 0,
    "type": "Card Break",
    "icon": "settings"
@@ -278,18 +347,6 @@
    "onboard": 0,
    "type": "Link",
    "icon": "company"
-  },
-  {
-   "dependencies": "",
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Chart of Accounts",
-   "link_count": 0,
-   "link_to": "Account",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link",
-   "icon": "chart-of-accounts"
   }
  ],
  "module": "Umre Ops",

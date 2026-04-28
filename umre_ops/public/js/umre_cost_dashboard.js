@@ -25,15 +25,27 @@
 
 	function fmt_money(value, currency) {
 		const n = Number(value || 0);
-		const cur = currency || "USD";
-		// Prefer the global helper — it knows the symbol for any registered Currency.
+		const cur = (currency || "USD").toString().toUpperCase();
+		// Force ISO USD formatting so we never show wrong symbols (e.g. "L") from
+		// corrupted Currency master rows or Company TRY defaults bleeding into Desk.
+		if (cur === "USD") {
+			try {
+				return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+			} catch (e) {
+				/* fall through */
+			}
+		}
 		if (typeof format_currency === "function") {
-			try { return format_currency(n, cur); } catch (e) { /* fall through */ }
+			try {
+				return format_currency(n, cur);
+			} catch (e) {
+				/* fall through */
+			}
 		}
 		try {
 			return frappe.format(n, { fieldtype: "Currency", options: cur });
 		} catch (e) {
-			return cur + " " + n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+			return cur + " " + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 		}
 	}
 
@@ -46,6 +58,18 @@
 		return Number(value || 0).toLocaleString("tr-TR");
 	}
 
+	const SEASON_PANEL_ID = "umre-season-fin-panel";
+	const SEASON_ENDPOINT = "umre_ops.umre_ops.services.dashboard_service.get_operational_expense_dashboard";
+
+	let _season_state = {
+		season: "",
+		category: "",
+		currency: "",
+		money_account: "",
+		chart_cat: null,
+		chart_month: null
+	};
+
 	function on_target_route() {
 		const route = (frappe.get_route && frappe.get_route()) || [];
 		if (!route || route.length < 2) return false;
@@ -55,40 +79,53 @@
 
 	function ensure_mounted() {
 		if (!on_target_route()) {
-			// Cleanly detach when navigating away.
-			const existing = document.getElementById(PANEL_ID);
-			if (existing) existing.remove();
+			const tp = document.getElementById(PANEL_ID);
+			if (tp) tp.remove();
+			const sp = document.getElementById(SEASON_PANEL_ID);
+			if (sp) sp.remove();
 			_state.chart = null;
+			_season_state.chart_cat = null;
+			_season_state.chart_month = null;
 			return;
 		}
 
-		// Existing panel? leave it (we'll re-render in place).
-		if (document.getElementById(PANEL_ID)) return;
-
-		// Find the workspace body container. Frappe v14 wraps workspace
-		// content in `.codex-editor` (block editor). Mount above it.
 		const candidates = [
 			document.querySelector(".workspace-sidebar-toggle ~ .codex-editor"),
 			document.querySelector(".layout-main-section .codex-editor"),
 			document.querySelector(".codex-editor")
 		];
 		const container = candidates.find(Boolean);
-		if (!container) return; // Will retry on next mutation.
+		if (!container) return;
 
-		const panel = document.createElement("div");
-		panel.id = PANEL_ID;
-		panel.className = "umre-fin-panel";
-		panel.innerHTML = render_skeleton();
-		container.parentNode.insertBefore(panel, container);
+		if (!document.getElementById(PANEL_ID)) {
+			const panel = document.createElement("div");
+			panel.id = PANEL_ID;
+			panel.className = "umre-fin-panel";
+			panel.innerHTML = render_skeleton();
+			container.parentNode.insertBefore(panel, container);
+			wire_events(panel);
+			schedule_refresh(0);
+		}
 
-		wire_events(panel);
-		schedule_refresh(0);
+		ensure_season_panel();
+	}
+
+	function ensure_season_panel() {
+		const tour = document.getElementById(PANEL_ID);
+		if (!tour || document.getElementById(SEASON_PANEL_ID)) return;
+		const sp = document.createElement("div");
+		sp.id = SEASON_PANEL_ID;
+		sp.className = "umre-fin-panel umre-season-fin-panel";
+		sp.innerHTML = render_season_skeleton();
+		tour.after(sp);
+		wire_season_events(sp);
+		schedule_season_refresh(0);
 	}
 
 	function render_skeleton() {
 		return `
 			<div class="umre-fin-panel__header">
-				<div class="umre-fin-panel__title"><span class="dot"></span>${__("Finansal Panel")}</div>
+				<div class="umre-fin-panel__title"><span class="dot"></span>${__("Tur Maliyeti Paneli")}</div>
 				<div class="umre-fin-panel__filter">
 					<label for="umre-fin-tour">${__("Tur")}</label>
 					<select id="umre-fin-tour"><option value="">${__("Tüm Turlar")}</option></select>
@@ -133,6 +170,160 @@
 	function schedule_refresh(delay_ms) {
 		if (_state.debounce_handle) clearTimeout(_state.debounce_handle);
 		_state.debounce_handle = setTimeout(refresh, delay_ms == null ? 250 : delay_ms);
+	}
+
+	function render_season_skeleton() {
+		return `
+			<div class="umre-fin-panel__header">
+				<div class="umre-fin-panel__title umre-season-fin-panel__title"><span class="dot"></span>${__("Sezonluk Genel Giderler")}</div>
+				<div class="umre-fin-panel__filter umre-season-filters">
+					<select id="umre-season-filter"></select>
+					<select id="umre-season-cat"></select>
+					<select id="umre-season-ccy"></select>
+					<select id="umre-season-acc"></select>
+					<button type="button" class="umre-fin-panel__refresh" id="umre-season-refresh">${__("Yenile")}</button>
+				</div>
+			</div>
+			<div class="umre-fin-hero umre-season-hero" id="umre-season-hero"></div>
+			<div class="umre-fin-cost umre-season-charts">
+				<div class="umre-fin-cost__chart">
+					<div class="umre-fin-cost__chart-title">${__("Kategori Dağılımı (USD)")}</div>
+					<div class="umre-fin-cost__chart-body" id="umre-season-chart-cat"></div>
+				</div>
+				<div class="umre-fin-cost__chart">
+					<div class="umre-fin-cost__chart-title">${__("Aylık Trend (USD)")}</div>
+					<div class="umre-fin-cost__chart-body" id="umre-season-chart-month"></div>
+				</div>
+			</div>`;
+	}
+
+	function wire_season_events(sp) {
+		const bind = (sel, key) => {
+			sp.querySelector(sel).addEventListener("change", function () {
+				_season_state[key] = this.value || "";
+				schedule_season_refresh(0);
+			});
+		};
+		bind("#umre-season-filter", "season");
+		bind("#umre-season-cat", "category");
+		bind("#umre-season-ccy", "currency");
+		bind("#umre-season-acc", "money_account");
+		sp.querySelector("#umre-season-refresh").addEventListener("click", function () {
+			schedule_season_refresh(0);
+		});
+	}
+
+	let _season_debounce = null;
+	function schedule_season_refresh(ms) {
+		if (_season_debounce) clearTimeout(_season_debounce);
+		_season_debounce = setTimeout(refresh_season, ms == null ? 200 : ms);
+	}
+
+	function refresh_season() {
+		const sp = document.getElementById(SEASON_PANEL_ID);
+		if (!sp) return;
+		sp.classList.add("umre-fin-loading");
+		frappe.call({
+			method: SEASON_ENDPOINT,
+			args: {
+				season: _season_state.season || "",
+				category: _season_state.category || "",
+				currency: _season_state.currency || "",
+				money_account: _season_state.money_account || ""
+			},
+			freeze: false
+		}).then((r) => {
+			sp.classList.remove("umre-fin-loading");
+			if (!r || !r.message) return;
+			render_season_payload(sp, r.message);
+		}).catch(() => {
+			sp.classList.remove("umre-fin-loading");
+		});
+	}
+
+	function render_season_payload(sp, p) {
+		const f = p.filters || {};
+		const curSeason = _season_state.season;
+		const curCat = _season_state.category;
+		const curCcy = _season_state.currency;
+		const curAcc = _season_state.money_account;
+
+		const sf = sp.querySelector("#umre-season-filter");
+		sf.innerHTML = [`<option value="">${__("(Tüm sezonlar)")}</option>`].concat(
+			(f.seasons || []).map(
+				(s) =>
+					`<option value="${frappe.utils.escape_html(s.name)}">${frappe.utils.escape_html(s.season_name || s.name)}</option>`
+			)
+		).join("");
+		sf.value = curSeason || "";
+
+		const sc = sp.querySelector("#umre-season-cat");
+		sc.innerHTML = [`<option value="">${__("(Tüm kategoriler)")}</option>`].concat(
+			(f.categories || []).map(
+				(c) =>
+					`<option value="${frappe.utils.escape_html(c.name)}">${frappe.utils.escape_html(c.category_name || c.name)}</option>`
+			)
+		).join("");
+		sc.value = curCat || "";
+
+		const sx = sp.querySelector("#umre-season-ccy");
+		sx.innerHTML = [`<option value="">${__("(Tüm para birimleri)")}</option>`].concat(
+			(f.currencies || []).map(
+				(c) => `<option value="${frappe.utils.escape_html(c)}">${frappe.utils.escape_html(c)}</option>`
+			)
+		).join("");
+		sx.value = curCcy || "";
+
+		const sa = sp.querySelector("#umre-season-acc");
+		sa.innerHTML = [`<option value="">${__("(Tüm hesaplar)")}</option>`].concat(
+			(f.money_accounts || []).map(
+				(a) =>
+					`<option value="${frappe.utils.escape_html(a.name)}">${frappe.utils.escape_html(a.account_name || a.name)}</option>`
+			)
+		).join("");
+		sa.value = curAcc || "";
+
+		const buckets = p.buckets_usd || {};
+		const hero = sp.querySelector("#umre-season-hero");
+		hero.innerHTML = [
+			hero_cell("revenue", __("Toplam Operasyonel Gider"), fmt_money(p.total_operational_usd, p.currency || "USD"), ""),
+			hero_cell("cost", __("Pazarlama"), fmt_money(buckets.marketing, p.currency || "USD"), ""),
+			hero_cell("cost", __("Ofis"), fmt_money(buckets.office, p.currency || "USD"), "")
+		].join("") + [
+			hero_cell("profit", __("Vergiler"), fmt_money(buckets.taxes, p.currency || "USD"), ""),
+			hero_cell("profit", __("Personel"), fmt_money(buckets.personnel, p.currency || "USD"), ""),
+			hero_cell("profit", __("Diğer"), fmt_money(buckets.other, p.currency || "USD"), "")
+		].join("");
+
+		const hostCat = sp.querySelector("#umre-season-chart-cat");
+		hostCat.innerHTML = "";
+		const cc = p.chart_by_category || {};
+		_season_state.chart_cat = null;
+		if ((cc.labels || []).length && typeof frappe.Chart === "function") {
+			_season_state.chart_cat = new frappe.Chart(hostCat, {
+				type: "donut",
+				data: { labels: cc.labels, datasets: cc.datasets || [] },
+				height: 240,
+				colors: ["#ea580c", "#2563eb", "#16a34a", "#9333ea", "#64748b", "#0ea5e9"]
+			});
+		} else {
+			hostCat.innerHTML = `<div class="umre-fin-empty">${__("Kayıt yok")}</div>`;
+		}
+
+		const hostM = sp.querySelector("#umre-season-chart-month");
+		hostM.innerHTML = "";
+		const cm = p.chart_monthly || {};
+		_season_state.chart_month = null;
+		if ((cm.labels || []).length && typeof frappe.Chart === "function") {
+			_season_state.chart_month = new frappe.Chart(hostM, {
+				type: "bar",
+				data: { labels: cm.labels, datasets: cm.datasets || [] },
+				height: 240,
+				colors: ["#0ea5e9"]
+			});
+		} else {
+			hostM.innerHTML = `<div class="umre-fin-empty">${__("Trend yok")}</div>`;
+		}
 	}
 
 	function refresh() {
@@ -290,6 +481,9 @@
 				if (btn) btn.classList.add("is-stale");
 				schedule_refresh(800);
 			});
+			frappe.realtime.on("umre_operational_expense_dirty", () => {
+				schedule_season_refresh(500);
+			});
 		}
 
 		// Also refresh whenever an Umre Booking or Cost Component is saved
@@ -306,6 +500,9 @@
 				doc.doctype === "Other Cost Rule"
 			) {
 				schedule_refresh(500);
+			}
+			if (doc.doctype === "Operational Expense") {
+				schedule_season_refresh(400);
 			}
 		});
 

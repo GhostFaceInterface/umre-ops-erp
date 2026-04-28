@@ -5,9 +5,16 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "operasyon_section",
   "company",
   "default_currency",
-  "accounts_section",
+  "active_season",
+  "dashboard_default_view",
+  "cost_centers_section",
+  "umre_operasyon_root_cost_center",
+  "genel_gider_cost_center",
+  "pazarlama_cost_center",
+  "legacy_section",
   "income_account",
   "receivable_account",
   "hotel_expense_account",
@@ -15,16 +22,16 @@
   "visa_expense_account",
   "diyanet_expense_account",
   "commission_expense_account",
-  "cost_centers_section",
-  "umre_operasyon_root_cost_center",
-  "genel_gider_cost_center",
-  "pazarlama_cost_center",
-  "mop_section",
   "havale_mode_of_payment",
   "elden_mode_of_payment",
   "taksit_mode_of_payment"
  ],
  "fields": [
+  {
+   "fieldname": "operasyon_section",
+   "fieldtype": "Section Break",
+   "label": "Genel Operasyon"
+  },
   {
    "fieldname": "company",
    "fieldtype": "Link",
@@ -33,62 +40,28 @@
    "reqd": 1
   },
   {
+   "default": "USD",
    "fieldname": "default_currency",
    "fieldtype": "Link",
    "label": "Varsayılan Para Birimi",
    "options": "Currency"
   },
   {
-   "fieldname": "accounts_section",
-   "fieldtype": "Section Break",
-   "label": "Hesaplar"
+   "fieldname": "active_season",
+   "fieldtype": "Link",
+   "label": "Aktif Sezon",
+   "options": "Umre Season"
   },
   {
-   "fieldname": "income_account",
-   "fieldtype": "Link",
-   "label": "Gelir Hesabı",
-   "options": "Account"
-  },
-  {
-   "fieldname": "receivable_account",
-   "fieldtype": "Link",
-   "label": "Alacak Hesabı",
-   "options": "Account"
-  },
-  {
-   "fieldname": "hotel_expense_account",
-   "fieldtype": "Link",
-   "label": "Otel Gider Hesabı",
-   "options": "Account"
-  },
-  {
-   "fieldname": "flight_expense_account",
-   "fieldtype": "Link",
-   "label": "Uçak Gider Hesabı",
-   "options": "Account"
-  },
-  {
-   "fieldname": "visa_expense_account",
-   "fieldtype": "Link",
-   "label": "Vize Gider Hesabı",
-   "options": "Account"
-  },
-  {
-   "fieldname": "diyanet_expense_account",
-   "fieldtype": "Link",
-   "label": "Diyanet Gider Hesabı",
-   "options": "Account"
-  },
-  {
-   "fieldname": "commission_expense_account",
-   "fieldtype": "Link",
-   "label": "Komisyon Gider Hesabı",
-   "options": "Account"
+   "fieldname": "dashboard_default_view",
+   "fieldtype": "Select",
+   "label": "Panel Varsayılan Görünüm",
+   "options": "Tur Maliyeti\nSezon Genel Giderleri\nHer İkisi"
   },
   {
    "fieldname": "cost_centers_section",
    "fieldtype": "Section Break",
-   "label": "Maliyet Merkezleri"
+   "label": "Tour Maliyet Merkezleri"
   },
   {
    "fieldname": "umre_operasyon_root_cost_center",
@@ -109,33 +82,86 @@
    "options": "Cost Center"
   },
   {
-   "fieldname": "mop_section",
+   "collapsible": 1,
+   "fieldname": "legacy_section",
    "fieldtype": "Section Break",
-   "label": "Ödeme Türü Eşlemesi"
+   "label": "Eski yapı — ERPNext hesap / ödeme (veriler korunur, kullanılmaz)"
+  },
+  {
+   "fieldname": "income_account",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Gelir Hesabı (eski)",
+   "options": "Account"
+  },
+  {
+   "fieldname": "receivable_account",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Alacak Hesabı (eski)",
+   "options": "Account"
+  },
+  {
+   "fieldname": "hotel_expense_account",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Otel Gider (eski)",
+   "options": "Account"
+  },
+  {
+   "fieldname": "flight_expense_account",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Uçak Gider (eski)",
+   "options": "Account"
+  },
+  {
+   "fieldname": "visa_expense_account",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Vize Gider (eski)",
+   "options": "Account"
+  },
+  {
+   "fieldname": "diyanet_expense_account",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Diyanet Gider (eski)",
+   "options": "Account"
+  },
+  {
+   "fieldname": "commission_expense_account",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Komisyon Gider (eski)",
+   "options": "Account"
   },
   {
    "fieldname": "havale_mode_of_payment",
    "fieldtype": "Link",
-   "label": "Havale Ödeme Türü",
+   "hidden": 1,
+   "label": "Havale MOP (eski)",
    "options": "Mode of Payment"
   },
   {
    "fieldname": "elden_mode_of_payment",
    "fieldtype": "Link",
-   "label": "Elden Ödeme Türü",
+   "hidden": 1,
+   "label": "Elden MOP (eski)",
    "options": "Mode of Payment"
   },
   {
    "fieldname": "taksit_mode_of_payment",
    "fieldtype": "Link",
-   "label": "Taksit Ödeme Türü",
+   "hidden": 1,
+   "label": "Taksit MOP (eski)",
    "options": "Mode of Payment"
   }
  ],
  "grid_page_length": 50,
  "issingle": 1,
  "links": [],
- "modified": "2026-04-23 12:00:00.000000",
+ "modified": "2026-04-28 20:00:00.000000",
  "modified_by": "Administrator",
  "module": "Umre Ops",
  "name": "Umre Ops Settings",

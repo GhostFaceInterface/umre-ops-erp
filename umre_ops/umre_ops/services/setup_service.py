@@ -37,7 +37,10 @@ def verify_setup() -> dict:
 			report["errors"].append(_("Invalid setting: {0} points to missing {1} {2}").format(field, doctype, val))
 
 	req("company", "Company")
-	for f in (
+
+	# Phase 2+: legacy ERPNext GL account / Mode of Payment mappings on `Umre Ops Settings`
+	# are deprecated. Non-tour spending uses `Operational Expense` and `Umre Money Account`.
+	legacy_account_fields = (
 		"income_account",
 		"receivable_account",
 		"hotel_expense_account",
@@ -45,14 +48,17 @@ def verify_setup() -> dict:
 		"visa_expense_account",
 		"diyanet_expense_account",
 		"commission_expense_account",
-	):
-		# not all are strictly required for all flows, but we validate them as warnings if missing
+	)
+	for f in legacy_account_fields:
 		val = s.get(f)
 		if val and not frappe.db.exists("Account", val):
-			report["ok"] = False
-			report["errors"].append(_("Invalid Account mapping: {0} -> {1}").format(f, val))
-		elif not val:
-			report["warnings"].append(_("Missing Account mapping: Umre Ops Settings.{0}").format(f))
+			report["warnings"].append(_("Stale legacy Umre Ops Settings.{0} -> missing Account {1}").format(f, val))
+
+	legacy_mop_fields = ("havale_mode_of_payment", "elden_mode_of_payment", "taksit_mode_of_payment")
+	for f in legacy_mop_fields:
+		val = s.get(f)
+		if val and not frappe.db.exists("Mode of Payment", val):
+			report["warnings"].append(_("Stale legacy Umre Ops Settings.{0} -> missing Mode of Payment {1}").format(f, val))
 
 	for f in ("umre_operasyon_root_cost_center", "genel_gider_cost_center", "pazarlama_cost_center"):
 		val = s.get(f)
@@ -61,12 +67,6 @@ def verify_setup() -> dict:
 			report["errors"].append(_("Invalid Cost Center mapping: {0} -> {1}").format(f, val))
 		elif not val:
 			report["warnings"].append(_("Missing Cost Center mapping: Umre Ops Settings.{0}").format(f))
-
-	for f in ("havale_mode_of_payment", "elden_mode_of_payment", "taksit_mode_of_payment"):
-		val = s.get(f)
-		if val and not frappe.db.exists("Mode of Payment", val):
-			report["ok"] = False
-			report["errors"].append(_("Invalid Mode of Payment mapping: {0} -> {1}").format(f, val))
 
 	report["details"]["settings"] = {k: s.get(k) for k in s.keys()}
 	return report

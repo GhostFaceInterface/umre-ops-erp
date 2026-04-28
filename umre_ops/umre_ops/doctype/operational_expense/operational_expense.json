@@ -1,0 +1,164 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 1,
+ "autoname": "hash",
+ "creation": "2026-04-28 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "season",
+  "status",
+  "expense_date",
+  "column_break_basic",
+  "money_account",
+  "currency",
+  "paid_to",
+  "category",
+  "amount_section",
+  "amount",
+  "usd_exchange_rate",
+  "usd_amount",
+  "description",
+  "receipt_attachment",
+  "related_tour"
+ ],
+ "fields": [
+  {
+   "fieldname": "season",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Sezon",
+   "options": "Umre Season",
+   "reqd": 1
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Durum",
+   "options": "Draft\nConfirmed\nCancelled",
+   "reqd": 1
+  },
+  {
+   "fieldname": "expense_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Ödeme Tarihi",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_basic",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "money_account",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Banka / Kasa Hesabı",
+   "options": "Umre Money Account",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "money_account.currency",
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Para Birimi",
+   "options": "Currency",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "paid_to",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Kime Ödendi",
+   "reqd": 1
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Gider Kalemi",
+   "options": "Operational Expense Category",
+   "reqd": 1
+  },
+  {
+   "fieldname": "amount_section",
+   "fieldtype": "Section Break",
+   "label": "Tutar"
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Tutar",
+   "options": "currency",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval: doc.currency && doc.currency != \"USD\"",
+   "description": "Tutarı USD karşılığına bölmek için kullanılacak pozitif katsayı (usd_amount = tutar ÷ kur). Örn. TRY: 1 USD = X TRY ise X girin.",
+   "fieldname": "usd_exchange_rate",
+   "fieldtype": "Float",
+   "label": "USD Kuru"
+  },
+  {
+   "fieldname": "usd_amount",
+   "fieldtype": "Currency",
+   "label": "USD Karşılığı",
+   "options": "USD",
+   "read_only": 1
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Açıklama"
+  },
+  {
+   "fieldname": "receipt_attachment",
+   "fieldtype": "Attach",
+   "label": "Belge / Dekont"
+  },
+  {
+   "fieldname": "related_tour",
+   "fieldtype": "Link",
+   "label": "İlgili Tur (opsiyonel)",
+   "options": "Umre Tour"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "is_submittable": 0,
+ "links": [],
+ "modified": "2026-04-28 00:00:00.000000",
+ "module": "Umre Ops",
+ "name": "Operational Expense",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "paid_to",
+ "track_changes": 1
+}

@@ -239,6 +239,158 @@ def get_tour_cost_breakdown(tour: str | None = None) -> dict[str, Any]:
 	}
 
 
+def _bucket_for_operational_category(category_name: str | None) -> str:
+	"""Map `Operational Expense Category.category_name` to dashboard card bucket."""
+	if not category_name:
+		return "other"
+	n = category_name.lower()
+	if any(k in n for k in ("pazarlama", "reklam")):
+		return "marketing"
+	if "ofis" in n:
+		return "office"
+	if "vergi" in n:
+		return "taxes"
+	if "personel" in n:
+		return "personnel"
+	return "other"
+
+
+@frappe.whitelist()
+def get_operational_expense_dashboard(
+	season: str | None = None,
+	category: str | None = None,
+	currency: str | None = None,
+	money_account: str | None = None,
+) -> dict[str, Any]:
+	"""Confirmed `Operational Expense` totals in **USD** — Sezonluk Genel Giderler panel.
+
+	Draft / Cancelled rows are excluded.
+	"""
+	if not frappe.db.exists("DocType", "Operational Expense"):
+		return {
+			"currency": CURRENCY,
+			"total_operational_usd": 0.0,
+			"buckets_usd": {
+				"marketing": 0.0,
+				"office": 0.0,
+				"taxes": 0.0,
+				"personnel": 0.0,
+				"other": 0.0,
+			},
+			"chart_by_category": {"labels": [], "datasets": []},
+			"chart_monthly": {"labels": [], "datasets": []},
+			"filters": {
+				"seasons": [],
+				"categories": [],
+				"money_accounts": [],
+				"currencies": [],
+			},
+		}
+
+	season = (season or "").strip() or None
+	category = (category or "").strip() or None
+	currency = (currency or "").strip() or None
+	money_account = (money_account or "").strip() or None
+
+	w = ["oe.status = %(st)s"]
+	params: dict[str, Any] = {"st": "Confirmed"}
+	if season:
+		w.append("oe.season = %(season)s")
+		params["season"] = season
+	if category:
+		w.append("oe.category = %(category)s")
+		params["category"] = category
+	if currency:
+		w.append("oe.currency = %(currency)s")
+		params["currency"] = currency
+	if money_account:
+		w.append("oe.money_account = %(money_account)s")
+		params["money_account"] = money_account
+
+	where = " AND ".join(w)
+
+	row = frappe.db.sql(
+		f"""
+		SELECT COALESCE(SUM(oe.usd_amount), 0) AS total_usd
+		FROM `tabOperational Expense` oe
+		WHERE {where}
+		""",
+		params,
+		as_dict=True,
+	)
+	total_all = flt((row[0] or {}).get("total_usd")) if row else 0.0
+
+	by_cat = frappe.db.sql(
+		f"""
+		SELECT
+		  c.category_name AS category_name,
+		  COALESCE(SUM(oe.usd_amount), 0) AS total_usd
+		FROM `tabOperational Expense` oe
+		LEFT JOIN `tabOperational Expense Category` c ON c.name = oe.category
+		WHERE {where}
+		GROUP BY c.category_name
+		ORDER BY total_usd DESC
+		""",
+		params,
+		as_dict=True,
+	)
+	chart_labels = [r["category_name"] or _("(No category)") for r in by_cat]
+	chart_values = [flt(r.get("total_usd")) for r in by_cat]
+
+	buckets = {"marketing": 0.0, "office": 0.0, "taxes": 0.0, "personnel": 0.0, "other": 0.0}
+	for r in by_cat:
+		bk = _bucket_for_operational_category(r.get("category_name"))
+		buckets[bk] = buckets.get(bk, 0.0) + flt(r.get("total_usd"))
+
+	monthly_rows = frappe.db.sql(
+		f"""
+		SELECT DATE_FORMAT(oe.expense_date, '%%Y-%%m') AS ym,
+		       COALESCE(SUM(oe.usd_amount), 0) AS total_usd
+		FROM `tabOperational Expense` oe
+		WHERE {where}
+		GROUP BY ym
+		ORDER BY ym ASC
+		""",
+		params,
+		as_dict=True,
+	)
+	mt_labels = [r["ym"] or "" for r in monthly_rows]
+	mt_values = [flt(r.get("total_usd")) for r in monthly_rows]
+
+	return {
+		"currency": CURRENCY,
+		"total_operational_usd": total_all,
+		"buckets_usd": {
+			"marketing": buckets["marketing"],
+			"office": buckets["office"],
+			"taxes": buckets["taxes"],
+			"personnel": buckets["personnel"],
+			"other": buckets["other"],
+		},
+		"chart_by_category": {
+			"labels": chart_labels,
+			"datasets": [{"name": _("Gider"), "values": chart_values}],
+		},
+		"chart_monthly": {
+			"labels": mt_labels,
+			"datasets": [{"name": _("USD"), "values": mt_values}],
+		},
+		"filters": {
+			"seasons": frappe.get_all("Umre Season", fields=["name", "season_name"], order_by="modified desc"),
+			"categories": frappe.get_all(
+				"Operational Expense Category", fields=["name", "category_name"], order_by="sort_order asc"
+			),
+			"money_accounts": frappe.get_all(
+				"Umre Money Account",
+				filters={"is_active": 1},
+				fields=["name", "account_name"],
+				order_by="account_name asc",
+			),
+			"currencies": frappe.get_all("Currency", pluck="name", order_by="name asc"),
+		},
+	}
+
+
 def publish_dashboard_dirty(tour: str | None = None) -> None:
 	"""Emit a realtime nudge so any open dashboard panel re-fetches.
 
