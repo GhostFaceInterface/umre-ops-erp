@@ -1,0 +1,62 @@
+{
+ "actions": [],
+ "autoname": "field:tour",
+ "creation": "2026-04-27 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "tour",
+  "mekke_days",
+  "medine_days"
+ ],
+ "fields": [
+  {
+   "fieldname": "tour",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Tur",
+   "options": "Umre Tour",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "mekke_days",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Mekke G\u00fcn Say\u0131s\u0131"
+  },
+  {
+   "default": "0",
+   "fieldname": "medine_days",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Medine G\u00fcn Say\u0131s\u0131"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "module": "Umre Ops",
+ "name": "Tour Cost Configuration",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "All"
+  }
+ ],
+ "row_format": "Dynamic",
+ "show_name_in_global_search": 0,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "tour"
+}

@@ -32,4 +32,3 @@ def execute():
 		"""
     )
     frappe.db.sql_ddl(f"ALTER TABLE {t} DROP COLUMN `bir_kisilik_oda_maliyeti`")
-    frappe.db.commit()

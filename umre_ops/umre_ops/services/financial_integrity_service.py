@@ -13,6 +13,8 @@ Checks per tour:
     2. No non-UMRECI booking has `ucret > 0`.
     3. No UMRECI booking has `ucret == 0`.
     4. Every booking in the tour has `locked_financials = 1`.
+    4b. Required cost types present; 4c component totals; 4d `Tour Diyanet Card Rule`
+        tutar vs per-booking DIYANET (UMRECI) when the rule amount is positive.
     5. Per-TC join: ERP `statu`, `ucret`, `manual_cost` match Excel truth row
        for the same TC (when truth file is provided).
 
@@ -131,10 +133,11 @@ def validate_financial_integrity(
 	if unlocked:
 		report["violations"].append("unlocked_bookings")
 
-	# 4b — Cost-engine integrity: every booking must carry the canonical components for its statu.
+	# 4b — Cost-engine integrity: every booking must carry its required system types
+	# (MEAL/OTHER only when the corresponding domain rule exists for that tour).
 	from umre_ops.umre_ops.services.cost_engine import (
-		SYSTEM_TYPES_FOR_UMRECI,
-		SYSTEM_TYPES_FOR_NON_UMRECI,
+		diyanet_rule_tutar_for_tour,
+		required_system_types_for_booking,
 	)
 	comp_rows = frappe.db.sql(
 		"""
@@ -153,7 +156,7 @@ def validate_financial_integrity(
 	negative_components = []
 	for b in bookings:
 		current = comps_by_booking.get(b["name"], {})
-		required = SYSTEM_TYPES_FOR_UMRECI if b["statu"] == PAYING_STATUS else SYSTEM_TYPES_FOR_NON_UMRECI
+		required = required_system_types_for_booking(tour, b.get("statu") or "")
 		lacks = [t for t in required if t not in current]
 		if lacks:
 			missing_components.append({"booking": b["name"], "tc": b["tc"], "statu": b["statu"], "missing": lacks})
@@ -172,6 +175,29 @@ def validate_financial_integrity(
 		report["violations"].append("missing_components")
 	if negative_components:
 		report["violations"].append("negative_components")
+
+	# 4d — `Tour Diyanet Card Rule` with tutar>0: each UMRECI must have DIYANET = that tutar.
+	expected_diy = flt(diyanet_rule_tutar_for_tour(tour))
+	diy_mismatch: list[dict] = []
+	if expected_diy > 0.01:
+		for b in bookings:
+			if b.get("statu") != PAYING_STATUS:
+				continue
+			got = flt((comps_by_booking.get(b["name"], {})).get("DIYANET", 0))
+			if abs(got - expected_diy) > 0.02:
+				diy_mismatch.append({
+					"booking": b["name"],
+					"tc": b.get("tc"),
+					"expected_diyanet": expected_diy,
+					"got_diyanet": got,
+				})
+	report["checks"]["diyanet_rule_vs_component"] = {
+		"expected_per_umreci": expected_diy,
+		"violations": len(diy_mismatch),
+		"rows": diy_mismatch[:50],
+	}
+	if diy_mismatch:
+		report["violations"].append("diyanet_rule_vs_component")
 
 	# 4c — Component-derived cost totals must match per-booking cost in the report layer.
 	cost_total_components = sum(

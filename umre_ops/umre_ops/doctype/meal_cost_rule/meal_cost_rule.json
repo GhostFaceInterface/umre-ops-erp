@@ -1,0 +1,87 @@
+{
+ "actions": [],
+ "autoname": "field:tour",
+ "creation": "2026-04-27 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "tour",
+  "mekke_price_sar",
+  "medine_price_sar",
+  "col_br_1",
+  "sar_to_usd_rate",
+  "sar_currency"
+ ],
+ "fields": [
+  {
+   "fieldname": "tour",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Tur",
+   "options": "Umre Tour",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "mekke_price_sar",
+   "fieldtype": "Currency",
+   "label": "Mekke G\u00fcnl\u00fck (SAR)",
+   "options": "sar_currency"
+  },
+  {
+   "default": "0",
+   "fieldname": "medine_price_sar",
+   "fieldtype": "Currency",
+   "label": "Medine G\u00fcnl\u00fck (SAR)",
+   "options": "sar_currency"
+  },
+  {
+   "fieldname": "col_br_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "3.75",
+   "description": "SAR toplam\u0131 bu b\u00f6lene; sonu\u00e7 USD (ki\u015fi ba\u015f\u0131 yemek).",
+   "fieldname": "sar_to_usd_rate",
+   "fieldtype": "Float",
+   "label": "SAR \u2192 USD Kuru",
+   "precision": "6"
+  },
+  {
+   "default": "SAR",
+   "fieldname": "sar_currency",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "SAR Helper",
+   "options": "Currency",
+   "print_hide": 1,
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "module": "Umre Ops",
+ "name": "Meal Cost Rule",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "All"
+  }
+ ],
+ "row_format": "Dynamic",
+ "show_name_in_global_search": 0,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "tour"
+}

@@ -1,10 +1,14 @@
 [pre_model_sync]
 # Patches added in this section will be executed before doctypes are migrated
 # Read docs to understand patches: https://frappeframework.com/docs/v14/user/en/database-migrations
+# reconcile_schema: legacy one-off renames; uses frappe.db.sql_ddl (not db.sql) where DDL is required.
+# salvage_umre_tour_meal_columns_pre: file snapshot only (no CREATE/DROP) — see patches/patch_guard.py
 umre_ops.patches.reconcile_schema
+umre_ops.patches.salvage_umre_tour_meal_columns_pre
 
 [post_model_sync]
-# Patches added in this section will be executed after doctypes are migrated
+# Data-only patches preferred. merge_umre_tour_salvage_into_domain_rules reads JSON (or legacy SELECT).
+umre_ops.patches.merge_umre_tour_salvage_into_domain_rules
 umre_ops.patches.reconcile_tour_hotel_bir_column
 umre_ops.patches.create_accounting_custom_fields
 umre_ops.patches.booking_status_manual_cost
@@ -12,3 +16,4 @@ umre_ops.patches.repair_imported_booking_status_costs
 umre_ops.patches.repair_imported_booking_status
 umre_ops.patches.restore_excel_truth
 umre_ops.patches.backfill_cost_components
+umre_ops.patches.sync_tour_diyanet_rule_para_birimi

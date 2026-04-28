@@ -14,6 +14,8 @@ Public surface
 * ``recompute_components(booking)``                          — alias with replace=True
 * ``assert_components_valid(booking)``                       — integrity guard
 * ``ensure_canonical_cost_types()``                          — seed master rows
+* ``sync_tour_diyanet_rule_currencies_from_tour()``         — fix rule `para_birimi` vs tour
+* ``recompute_tour_bookings(tour)``                        — full replace + per-booking commit
 
 Design rules
 ------------
@@ -26,7 +28,7 @@ Design rules
 * Every component carries its own ``currency``; cross-currency sums are
   forbidden and will raise.
 * All system-managed components are emitted even when their amount is 0
-  (e.g. DIYANET when the card flag is off, OTHER when not configured) so
+  (e.g. DIYANET when there is no tour rule or `tutar` is 0, OTHER when not configured) so
   the per-tour breakdown always carries the same column set.
 """
 from __future__ import annotations
@@ -51,7 +53,10 @@ CANONICAL_TYPES: list[dict] = [
 	{"code": "OTHER",   "name": "Di\u011fer Maliyet", "sort": 60, "is_system_managed": 1},
 	{"code": "MANUAL",  "name": "Manuel Maliyet",   "sort": 90, "is_system_managed": 1},
 ]
-SYSTEM_TYPES_FOR_UMRECI: tuple[str, ...] = ("HOTEL", "FLIGHT", "VISA", "DIYANET", "MEAL", "OTHER")
+# Baseline per-UMRECI types; MEAL/OTHER are appended when domain rules exist.
+_BASE_SYSTEM_TYPES_UMRECI: tuple[str, ...] = ("HOTEL", "FLIGHT", "VISA", "DIYANET")
+# Backwards compat for code that still expects a constant tuple of all six:
+SYSTEM_TYPES_FOR_UMRECI: tuple[str, ...] = _BASE_SYSTEM_TYPES_UMRECI + ("MEAL", "OTHER")
 SYSTEM_TYPES_FOR_NON_UMRECI: tuple[str, ...] = ("MANUAL",)
 
 
@@ -153,53 +158,141 @@ def _visa_total(tur: str | None, vize_tipi: str | None) -> float:
 	return flt(frappe.db.get_value("Tour Visa Cost Rule", name, "tutar") or 0)
 
 
-def _diyanet_total(tur: str | None, has_card: int | None) -> float:
-	if not tur or not cint(has_card):
-		return 0.0
+def _diyanet_rule_row(tur: str | None) -> dict | None:
+	"""Single `Tour Diyanet Card Rule` row for this tour (Umre Tour name = `tur` link)."""
+	if not tur:
+		return None
 	name = frappe.db.get_value("Tour Diyanet Card Rule", {"tur": tur}, "name")
 	if not name:
-		return 0.0
-	return flt(frappe.db.get_value("Tour Diyanet Card Rule", name, "tutar") or 0)
-
-
-def _meal_inputs(tour_doc) -> dict:
-	return {
-		"mekke_days":            cint(tour_doc.get("mekke_days") or 0),
-		"medine_days":           cint(tour_doc.get("medine_days") or 0),
-		"mekke_meal_price_sar":  flt(tour_doc.get("mekke_meal_price_sar") or 0),
-		"medine_meal_price_sar": flt(tour_doc.get("medine_meal_price_sar") or 0),
-		"sar_to_usd_rate":       flt(tour_doc.get("sar_to_usd_rate") or 0),
-	}
-
-
-def _meal_total_usd(tour_doc) -> tuple[float, str]:
-	"""(amount in USD, human description)."""
-	m = _meal_inputs(tour_doc)
-	if not (m["mekke_days"] or m["medine_days"]):
-		return 0.0, "no meal days configured"
-	if (m["mekke_meal_price_sar"] or m["medine_meal_price_sar"]) and not m["sar_to_usd_rate"]:
-		# Fail-fast: SAR config without an FX rate is a configuration error.
-		frappe.throw(
-			_("Tour {0}: meal prices in SAR are configured but `sar_to_usd_rate` is 0. "
-			  "Set the conversion rate before booking UMRECI participants.").format(tour_doc.name)
-		)
-	if m["sar_to_usd_rate"] <= 0:
-		return 0.0, "no FX rate"
-	sar = (
-		m["mekke_days"] * m["mekke_meal_price_sar"]
-		+ m["medine_days"] * m["medine_meal_price_sar"]
+		return None
+	return frappe.db.get_value(
+		"Tour Diyanet Card Rule",
+		name,
+		["tutar", "para_birimi"],
+		as_dict=True,
 	)
-	usd = flt(sar / m["sar_to_usd_rate"])
+
+
+def diyanet_rule_tutar_for_tour(tur: str | None) -> float:
+	"""Published expected per-UMRECI Diyanet amount from the tour rule (0 if none)."""
+	row = _diyanet_rule_row(tur)
+	if not row:
+		return 0.0
+	return flt(row.get("tutar") or 0)
+
+
+def _diyanet_for_umreci(
+	tour_name: str | None,
+	tour_currency: str,
+) -> tuple[float, str, str | None]:
+	"""Per-UMRECI Diyanet: `Tour Diyanet Card Rule` only. Never use ``diyanet_kart_var`` here.
+
+	Component currency is always ``tour_currency`` (one currency per booking). If the
+	rule’s ``para_birimi`` differs, we do **not** throw — we log it in **notes** so a
+	line is still created (avoids zero DIYANET on currency mismatch in production).
+	"""
+	row = _diyanet_rule_row(tour_name)
+	if not row:
+		return 0.0, str(_("Diyanet kuralı yok")), None
+	amt = flt(row.get("tutar") or 0)
+	rule_curr = (row.get("para_birimi") or "").strip() or None
+	notes: list[str] = [f"tour_diyanet_card_rule tutar={amt}"]
+	if rule_curr and tour_currency and rule_curr != tour_currency:
+		notes.append(
+			_("Kural `para_birimi` = {0}, tur = {1} — bilet tutarı aynı sayı, para birimi tur ile.").format(
+				rule_curr, tour_currency
+			)
+		)
+	if amt <= 0:
+		return 0.0, str(_("Diyanet kuralı: tutar 0")), " ".join(notes) if notes else None
+	return flt(round(amt, 2)), str(_("Diyanet (Tour Diyanet Card Rule)")), " ".join(notes)
+
+
+# ---------------------------------------------------------------------------
+# Domain rules: Tour Cost Configuration / Meal Cost Rule / Other Cost Rule
+# ---------------------------------------------------------------------------
+
+def meal_cost_rule_exists(tour: str | None) -> bool:
+	if not tour:
+		return False
+	if not frappe.db.exists("DocType", "Meal Cost Rule"):
+		return False
+	return bool(frappe.db.exists("Meal Cost Rule", {"tour": tour}))
+
+
+def other_cost_rule_exists(tour: str | None) -> bool:
+	if not tour:
+		return False
+	if not frappe.db.exists("DocType", "Other Cost Rule"):
+		return False
+	return bool(frappe.db.exists("Other Cost Rule", {"tour": tour}))
+
+
+def _tour_cost_config_days(tour: str | None) -> tuple[int, int]:
+	"""Mekke / Medine day counts from `Tour Cost Configuration` (defaults 0)."""
+	if not tour or not frappe.db.exists("DocType", "Tour Cost Configuration"):
+		return 0, 0
+	if not frappe.db.exists("Tour Cost Configuration", {"tour": tour}):
+		return 0, 0
+	row = frappe.db.get_value(
+		"Tour Cost Configuration", {"tour": tour},
+		["mekke_days", "medine_days"],
+		as_dict=True,
+	) or {}
+	return cint(row.get("mekke_days")), cint(row.get("medine_days"))
+
+
+def _meal_per_person_usd(tour: str) -> tuple[float, str]:
+	"""Per-UMRECI yemek (tour para birimi / booking currency).
+
+	``(mekke_days * mekke_price_sar + medine_days * medine_price_sar) / rate``
+	"""
+	if not meal_cost_rule_exists(tour):
+		return 0.0, "no meal cost rule"
+	mekke_days, medine_days = _tour_cost_config_days(tour)
+	mr_name = frappe.db.get_value("Meal Cost Rule", {"tour": tour}, "name")
+	if not mr_name:
+		return 0.0, "no meal cost rule"
+	mr = frappe.get_doc("Meal Cost Rule", mr_name)
+	mp = flt(mr.mekke_price_sar)
+	mdp = flt(mr.medine_price_sar)
+	rate = flt(mr.sar_to_usd_rate)
+	sar_portion = mekke_days * mp + medine_days * mdp
+	if sar_portion > 0 and rate <= 0:
+		frappe.throw(
+			_("Meal Cost Rule (tour {0}): yemek SAR toplamı var ancak `sar_to_usd_rate` 0. "
+			  "Kuru tanımlayın veya fiyat/gün değerlerini sıfırlayın.").format(tour)
+		)
+	if rate <= 0 and sar_portion == 0:
+		return 0.0, "meal rule: zero days or prices"
+	usd = flt(sar_portion / rate) if rate else 0.0
 	desc = (
-		f"({m['mekke_days']}d Mekke x {m['mekke_meal_price_sar']:.2f} SAR + "
-		f"{m['medine_days']}d Medine x {m['medine_meal_price_sar']:.2f} SAR) "
-		f"/ {m['sar_to_usd_rate']:.4f}"
+		f"({mekke_days}d M x {mp:.2f} SAR + {medine_days}d Med x {mdp:.2f} SAR) / {rate:.4f}"
+		if (mekke_days or medine_days)
+		else f"meal rule: SAR={sar_portion:.2f} / {rate:.4f}"
 	)
 	return flt(round(usd, 2)), desc
 
 
-def _other_total(tour_doc) -> float:
-	return flt(tour_doc.get("other_cost_per_person") or 0)
+def _other_per_person(tour: str) -> float:
+	if not other_cost_rule_exists(tour):
+		return 0.0
+	rname = frappe.db.get_value("Other Cost Rule", {"tour": tour}, "name")
+	if not rname:
+		return 0.0
+	return flt(frappe.db.get_value("Other Cost Rule", rname, "per_person_cost") or 0)
+
+
+def required_system_types_for_booking(tour: str | None, statu: str) -> tuple[str, ...]:
+	"""Dynamically required *system* component types (MEAL/OTHER if rules exist)."""
+	if (statu or "").strip() != PAYING_STATUS:
+		return SYSTEM_TYPES_FOR_NON_UMRECI
+	req: list[str] = list(_BASE_SYSTEM_TYPES_UMRECI)
+	if tour and meal_cost_rule_exists(tour):
+		req.append("MEAL")
+	if tour and other_cost_rule_exists(tour):
+		req.append("OTHER")
+	return tuple(req)
 
 
 # ---------------------------------------------------------------------------
@@ -276,6 +369,8 @@ def _make_component(
 ) -> str:
 	"""Insert a system-generated Cost Component. Returns the new doc name."""
 	amount = flt(round(flt(quantity) * flt(unit_price), 2))
+	if cost_type == "DIYANET":
+		print("FINAL DIYANET BEFORE INSERT (computed amount, qty, unit_price):", amount, quantity, unit_price, flush=True)
 	doc = frappe.get_doc({
 		"doctype": "Cost Component",
 		"booking": booking_name,
@@ -292,6 +387,14 @@ def _make_component(
 	})
 	doc.flags.ignore_system_generated_lock = True
 	doc.insert(ignore_permissions=True)
+	if cost_type == "DIYANET":
+		row = frappe.db.get_value(
+			"Cost Component",
+			doc.name,
+			["amount", "unit_price", "quantity", "name"],
+			as_dict=True,
+		)
+		print("AFTER INSERT (tabCost Component row):", row, flush=True)
 	return doc.name
 
 
@@ -332,10 +435,28 @@ def generate_components(
 	booking_name = booking_doc.name
 	tour_name = booking_doc.get("tur")
 
+	# Step 2 — must run *before* early return: proves filters vs rule even when recompute is skipped.
+	print("BOOKING:", booking_doc.name, flush=True)
+	print("STATU:", booking_doc.get("statu"), flush=True)
+	print("TOUR:", booking_doc.get("tur"), flush=True)
+	rule = frappe.db.get_value(
+		"Tour Diyanet Card Rule",
+		{"tur": tour_name},
+		["tutar", "para_birimi"],
+		as_dict=True,
+	)
+	print("DIYANET RULE:", rule, flush=True)
+
 	existing = frappe.db.count(
 		"Cost Component", {"booking": booking_name, "is_system_generated": 1}
 	)
 	if existing and not replace_system_generated:
+		print(
+			"[cost_engine] EARLY_RETURN: booking has",
+			existing,
+			"system component row(s); replace_system_generated is False (no regen, no new DIYANET).",
+			flush=True,
+		)
 		return []
 	if replace_system_generated:
 		_delete_system_generated(booking_name)
@@ -374,47 +495,50 @@ def generate_components(
 			quantity=1, unit_price=visa, currency=currency,
 			source="tour_visa_cost_rule",
 		))
-		# 4) DIYANET — only when card flag is set; emit 0 otherwise so the
-		#    column always exists in the breakdown.
-		diy = _diyanet_total(tour_name, booking_doc.get("diyanet_kart_var"))
+		# 4) DIYANET — `Tour Diyanet Card Rule` (never `diyanet_kart_var`).
+		diyanet = diyanet_rule_tutar_for_tour(tour_name)
+		diy, _diy_desc, diy_notes = _diyanet_for_umreci(tour_name, currency)
+		print("DIYANET (rule_tutar / line unit_price):", diyanet, diy, flush=True)
 		created.append(_make_component(
 			booking_name=booking_name, tour=tour_name,
 			cost_type="DIYANET",
-			description="Diyanet kart" if cint(booking_doc.get("diyanet_kart_var")) else "Diyanet kart yok",
+			description=str(_diy_desc),
 			quantity=1, unit_price=diy, currency=currency,
 			source="tour_diyanet_card_rule",
+			notes=diy_notes or None,
 		))
-		# 5) MEAL — derived from per-tour days/prices and SAR→USD FX.
-		if not tour_doc:
-			frappe.throw(_("Booking {0}: tour {1} is not resolvable; cannot compute MEAL component.").format(booking_name, tour_name))
-		meal_amount, meal_desc = _meal_total_usd(tour_doc)
-		mealinp = _meal_inputs(tour_doc)
-		mekke_days = mealinp["mekke_days"]
-		medine_days = mealinp["medine_days"]
-		mekke_unit = flt(mealinp["mekke_meal_price_sar"]) / mealinp["sar_to_usd_rate"] if mealinp["sar_to_usd_rate"] else 0
-		medine_unit = flt(mealinp["medine_meal_price_sar"]) / mealinp["sar_to_usd_rate"] if mealinp["sar_to_usd_rate"] else 0
-		# Represent meal as a single composite component (qty=1, unit_price=amount)
-		# because mekke and medine days carry different unit prices. Composition
-		# detail is preserved in `description`.
-		created.append(_make_component(
-			booking_name=booking_name, tour=tour_name,
-			cost_type="MEAL",
-			description=f"Yemek {meal_desc}",
-			quantity=1, unit_price=meal_amount, currency=currency,
-			source="meal_engine",
-			notes=(f"mekke_days={mekke_days} mekke_unit_usd={mekke_unit:.4f}; "
-			       f"medine_days={medine_days} medine_unit_usd={medine_unit:.4f}"),
-		))
-		# 6) OTHER — flat per-tour amount.
-		other = _other_total(tour_doc)
-		created.append(_make_component(
-			booking_name=booking_name, tour=tour_name,
-			cost_type="OTHER",
-			description="Diğer (transfer / hediye)",
-			quantity=1, unit_price=other, currency=currency,
-			source="umre_tour.other_cost_per_person",
-		))
+		# 5) MEAL — `Tour Cost Configuration` + `Meal Cost Rule` (not on Umre Tour).
+		if tour_name and meal_cost_rule_exists(tour_name):
+			meal_amount, meal_desc = _meal_per_person_usd(tour_name)
+			mk_d, md_d = _tour_cost_config_days(tour_name)
+			# Kişi başı: qty=1, unit_price=per-UMRECI toplam (tüm operasyonel günler).
+			created.append(_make_component(
+				booking_name=booking_name, tour=tour_name,
+				cost_type="MEAL",
+				description=f"Yemek {meal_desc}",
+				quantity=1, unit_price=meal_amount, currency=currency,
+				source="meal_cost_rule+Tour Cost Configuration",
+				notes=f"domain: mekke_days={mk_d} medine_days={md_d}",
+			))
+		# 6) OTHER — `Other Cost Rule` (kişi başı, tek bileşen satırı).
+		if tour_name and other_cost_rule_exists(tour_name):
+			other = _other_per_person(tour_name)
+			created.append(_make_component(
+				booking_name=booking_name, tour=tour_name,
+				cost_type="OTHER",
+				description="Diğer (kişi başı, Other Cost Rule)",
+				quantity=1, unit_price=other, currency=currency,
+				source="other_cost_rule",
+			))
 	else:
+		print(
+			"[cost_engine] UMRECI block SKIPPED: statu is not",
+			repr(PAYING_STATUS),
+			"got",
+			repr(statu),
+			"— no HOTEL/…/DIYANET; MANUAL only.",
+			flush=True,
+		)
 		# Non-UMRECI: a single MANUAL component carrying `manual_cost`.
 		manual = flt(booking_doc.get("manual_cost") or 0)
 		if manual <= 0:
@@ -435,18 +559,127 @@ def generate_components(
 	return created
 
 
-def recompute_components(booking) -> list[str]:
+def recompute_components(booking, *, skip_dashboard_publish: bool = False) -> list[str]:
 	"""Explicit refresh: deletes existing system-generated rows and rebuilds."""
 	created = generate_components(booking, replace_system_generated=True)
-	# Nudge any open Umre Operasyon Paneli even when components are unchanged.
+	if not skip_dashboard_publish:
+		# Nudge any open Umre Operasyon Paneli even when components are unchanged.
+		try:
+			from umre_ops.umre_ops.services.dashboard_service import publish_dashboard_dirty
+			name = booking if isinstance(booking, str) else getattr(booking, "name", None)
+			tour = frappe.db.get_value("Umre Booking", name, "tur") if name else None
+			publish_dashboard_dirty(tour)
+		except Exception:
+			frappe.log_error(title="dashboard publish failed (recompute)")
+	return created
+
+
+def schedule_recompute_for_tour(tour: str | None) -> None:
+	"""Event-driven: enqueue full tour recompute after the current commit."""
+	if not (tour or "").strip():
+		return
+	tour = tour.strip()
+	frappe.enqueue(
+		"umre_ops.umre_ops.services.cost_engine.recompute_tour_bookings",
+		queue="default",
+		tour=tour,
+		enqueue_after_commit=True,
+		job_name=f"recompute_tour:{tour}",
+	)
+
+
+def sync_tour_diyanet_rule_currencies_from_tour(*, commit: bool = True) -> dict:
+	"""Align `Tour Diyanet Card Rule.para_birimi` with the linked `Umre Tour` currency.
+
+	Rule rows may default to USD; aligning them avoids inconsistent ``para_birimi`` vs
+	the tour. :func:`_diyanet_for_umreci` still emits a line if currencies differ, but
+	keeping rules aligned is recommended.
+	"""
+	if not frappe.db.exists("DocType", "Tour Diyanet Card Rule"):
+		return {"updated": 0, "rules_seen": 0}
+	rules = frappe.get_all("Tour Diyanet Card Rule", fields=["name", "tur", "para_birimi"], limit_page_length=0)
+	updated = 0
+	for r in rules:
+		if not r.get("tur"):
+			continue
+		tcurr = frappe.db.get_value("Umre Tour", r["tur"], "para_birimi")
+		if not tcurr or (r.get("para_birimi") or "") == tcurr:
+			continue
+		frappe.db.set_value("Tour Diyanet Card Rule", r["name"], "para_birimi", tcurr)
+		updated += 1
+	if commit:
+		frappe.db.commit()
+	return {"updated": updated, "rules_seen": len(rules)}
+
+
+def recompute_tour_bookings(tour: str) -> dict:
+	"""Recompute system-generated `Cost Component` rows for every booking on this tour.
+
+	Deletes *all* system-generated lines per booking, then rebuilds HOTEL, FLIGHT,
+	VISA, DIYANET, and MEAL/OTHER when the domain rules exist.
+
+	Invoked from RQ (after cost-rule saves), migration patches, and
+	:func:`recompute_tour_from_desk` (whitelisted). Commits after each successful
+	booking so one failure does not roll back the whole tour. Emits a single dashboard
+	``dirty`` at the end to avoid N realtime storms.
+	"""
+	tour = (tour or "").strip()
+	if not tour or not frappe.db.exists("Umre Tour", tour):
+		return {"tour": tour, "bookings": 0, "ok": 0, "recomputed": 0, "errors": []}
+	names = frappe.get_all(
+		"Umre Booking", filters={"tur": tour}, pluck="name", order_by="creation asc"
+	)
+	errors: list[dict] = []
+	for name in names:
+		try:
+			recompute_components(name, skip_dashboard_publish=True)
+			frappe.db.commit()
+		except Exception as exc:  # noqa: BLE001 — tour batch: collect and continue
+			frappe.db.rollback()
+			errors.append({"booking": name, "error": str(exc)})
+			frappe.log_error(
+				message=frappe.get_traceback(),
+				title=f"recompute_tour_bookings: tour={tour!r} booking={name!r}",
+			)
 	try:
 		from umre_ops.umre_ops.services.dashboard_service import publish_dashboard_dirty
-		name = booking if isinstance(booking, str) else getattr(booking, "name", None)
-		tour = frappe.db.get_value("Umre Booking", name, "tur") if name else None
+
 		publish_dashboard_dirty(tour)
 	except Exception:
-		frappe.log_error(title="dashboard publish failed (recompute)")
-	return created
+		frappe.log_error(title="dashboard publish failed (recompute_for_tour)")
+	ok = len(errors) == 0
+	if errors:
+		frappe.log_error(
+			message=str(errors)[:20000],
+			title=f"recompute_tour_bookings: {len(errors)} failed booking(s) on tour={tour!r}",
+		)
+	return {
+		"tour": tour,
+		"bookings": len(names),
+		"recomputed": len(names) - len(errors),
+		"ok": 1 if ok else 0,
+		"errors": errors,
+	}
+
+
+@frappe.whitelist()
+def sync_diyanet_rule_currencies_from_desk() -> dict:
+	"""Set each `Tour Diyanet Card Rule` `para_birimi` to the linked `Umre Tour` currency (USD→try fix)."""
+	_roles = set(frappe.get_roles())
+	if frappe.session.user != "Administrator" and "System Manager" not in _roles:
+		frappe.throw(_("Not permitted."))
+	return sync_tour_diyanet_rule_currencies_from_tour(commit=True)
+
+
+@frappe.whitelist()
+def recompute_components_for_tour(tour: str) -> dict:
+	"""Synchronous, explicit recompute of every booking for a tour (ops / desk)."""
+	tour = (tour or "").strip()
+	if not tour:
+		frappe.throw(_("tour is required."))
+	if not frappe.has_permission("Umre Tour", "read", doc=tour):
+		frappe.throw(_("Not permitted to recompute costs for tour {0}").format(tour))
+	return recompute_tour_bookings(tour)
 
 
 @frappe.whitelist()
@@ -477,9 +710,8 @@ def assert_components_valid(booking) -> None:
 		or frappe.db.get_value("Umre Booking", booking_name, "statu")
 		or PAYING_STATUS
 	)
-	required: Iterable[str] = (
-		SYSTEM_TYPES_FOR_UMRECI if statu == PAYING_STATUS else SYSTEM_TYPES_FOR_NON_UMRECI
-	)
+	tour = frappe.db.get_value("Umre Booking", booking_name, "tur")
+	required: Iterable[str] = required_system_types_for_booking(tour, statu)
 
 	present = {
 		c["cost_type"]

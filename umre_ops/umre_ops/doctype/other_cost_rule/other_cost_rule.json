@@ -1,0 +1,66 @@
+{
+ "actions": [],
+ "autoname": "field:tour",
+ "creation": "2026-04-27 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "tour",
+  "currency",
+  "per_person_cost"
+ ],
+ "fields": [
+  {
+   "fieldname": "tour",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Tur",
+   "options": "Umre Tour",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "USD",
+   "fetch_from": "tour.para_birimi",
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Para Birimi",
+   "options": "Currency",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "per_person_cost",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Ki\u015fi Ba\u015f\u0131 Di\u011fer Maliyet",
+   "options": "currency"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "module": "Umre Ops",
+ "name": "Other Cost Rule",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "All"
+  }
+ ],
+ "row_format": "Dynamic",
+ "show_name_in_global_search": 0,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "tour"
+}

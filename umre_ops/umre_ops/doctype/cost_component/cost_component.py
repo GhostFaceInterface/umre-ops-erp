@@ -6,7 +6,7 @@
 Invariants enforced here (cheap and safe; the cost engine has the wider
 financial integrity checks):
 
-* `amount = round(quantity * unit_price, 2)` whenever both are set.
+* `amount = round(quantity * unit_price, 2)` on every validate (single source of truth).
 * `amount >= 0` (no negative cost without explicit operator override).
 * `currency` is always present (defaulted from Cost Type if missing).
 * System-generated rows cannot be hand-edited via desk UI to a different
@@ -42,15 +42,17 @@ class CostComponent(Document):
 		self.currency = "USD"
 
 	def _recompute_amount(self) -> None:
-		# Only recompute when both qty + unit_price are provided. Otherwise
-		# trust the caller (some patches push `amount` directly without
-		# decomposing). Round to 2 dp for stable comparisons.
+		# Always derive ``amount`` from ``quantity × unit_price`` (rounded).
+		#
+		# Do **not** use ``if qty and up:`` — in Python ``0.0`` is falsy, so a
+		# legitimate zero unit price (or a transient 0 before the currency line
+		# is applied) skipped recomputation and, combined with the old
+		# ``elif self.amount in (None, \"\"): self.amount = 0.0`` branch, could
+		# persist **amount = 0** even when the cost engine had already computed
+		# a non‑zero total in memory.
 		qty = flt(self.quantity or 0)
 		up = flt(self.unit_price or 0)
-		if qty and up:
-			self.amount = flt(round(qty * up, 2))
-		elif self.amount in (None, ""):
-			self.amount = 0.0
+		self.amount = flt(round(qty * up, 2))
 
 	def _enforce_non_negative(self) -> None:
 		if flt(self.amount) < 0:

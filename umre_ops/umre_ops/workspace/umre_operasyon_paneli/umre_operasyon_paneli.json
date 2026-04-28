@@ -86,7 +86,7 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "MALİYET",
-   "link_count": 5,
+   "link_count": 8,
    "onboard": 0,
    "type": "Card Break",
    "icon": "accounting"
@@ -138,6 +138,42 @@
    "onboard": 0,
    "type": "Link",
    "icon": "card"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Tur Maliyet Konfigürasyonu",
+   "link_count": 0,
+   "link_to": "Tour Cost Configuration",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link",
+   "icon": "calendar"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Yemek Maliyet Kuralı",
+   "link_count": 0,
+   "link_to": "Meal Cost Rule",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link",
+   "icon": "restaurant"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Diğer Maliyet Kuralı",
+   "link_count": 0,
+   "link_to": "Other Cost Rule",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link",
+   "icon": "wallet"
   },
   {
    "hidden": 0,

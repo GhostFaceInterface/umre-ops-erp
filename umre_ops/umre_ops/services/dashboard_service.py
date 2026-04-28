@@ -41,8 +41,9 @@ Returns a single, complete payload for the Umre Operasyon Paneli dashboard:
 
 Performance contract
 --------------------
-* TWO SQL queries total (booking-level metrics + component aggregation).
-* No per-booking Python loops.
+* TWO SQL queries total (booking-level metrics + component aggregation
+  joined to ``Cost Type`` for sort order and display names).
+* No per-booking Python loops; no response caching.
 * Safe for use as a desk-page payload (returns inside one HTTP round-trip).
 """
 from __future__ import annotations
@@ -55,17 +56,16 @@ from frappe.utils import flt
 
 CURRENCY = "USD"
 
-# Display labels and color hints (red shades for cost, in canonical sort order).
-COMPONENT_DISPLAY: list[dict[str, Any]] = [
-	{"code": "HOTEL",   "label": "Otel Maliyeti",     "color": "#b91c1c"},   # red 700
-	{"code": "FLIGHT",  "label": "Uçak Maliyeti",     "color": "#dc2626"},   # red 600
-	{"code": "VISA",    "label": "Vize Maliyeti",     "color": "#ef4444"},   # red 500
-	{"code": "DIYANET", "label": "Diyanet Maliyeti",  "color": "#f87171"},   # red 400
-	{"code": "MEAL",    "label": "Yemek Maliyeti",    "color": "#fb923c"},   # orange 400
-	{"code": "OTHER",   "label": "Diğer Maliyetler", "color": "#fbbf24"},   # amber 400
-	{"code": "MANUAL",  "label": "Manuel Maliyet",    "color": "#9a3412"},   # red 800
-]
-COMPONENT_ORDER: list[str] = [c["code"] for c in COMPONENT_DISPLAY]
+# Doughnut legend colours (align with `Cost Type` codes).
+CHART_HEX_BY_CODE: dict[str, str] = {
+	"HOTEL":   "#ff4d4f",
+	"FLIGHT":  "#ff7a45",
+	"VISA":    "#ffa940",
+	"DIYANET": "#36cfc9",
+	"MEAL":    "#597ef7",
+	"OTHER":   "#9254de",
+	"MANUAL":  "#13c2c2",
+}
 
 
 def _list_tour_options() -> list[dict[str, str]]:
@@ -112,8 +112,10 @@ def _booking_metrics(tour: str | None) -> dict[str, float]:
 	}
 
 
-def _component_totals(tour: str | None) -> dict[str, float]:
-	"""Single SQL: SUM(amount) grouped by cost_type, optionally tour-scoped."""
+def _component_rollup(
+	tour: str | None,
+) -> tuple[dict[str, float], list[dict[str, Any]]]:
+	"""One SQL: amounts per ``cost_type`` with ``Cost Type`` sort + label."""
 	where = "WHERE 1=1"
 	params: dict[str, Any] = {}
 	if tour:
@@ -122,22 +124,43 @@ def _component_totals(tour: str | None) -> dict[str, float]:
 
 	rows = frappe.db.sql(
 		f"""
-		SELECT c.cost_type AS code, SUM(c.amount) AS total
+		SELECT
+			c.cost_type AS code,
+			SUM(c.amount) AS total,
+			MIN(IFNULL(ct.sort_order, 9999)) AS sort_order,
+			MIN(IFNULL(ct.cost_type_name, c.cost_type)) AS type_label
 		FROM `tabCost Component` c
 		JOIN `tabUmre Booking` b ON b.name = c.booking
+		LEFT JOIN `tabCost Type` ct ON ct.name = c.cost_type
 		{where}
 		GROUP BY c.cost_type
+		ORDER BY sort_order, c.cost_type
 		""",
 		params,
 		as_dict=True,
 	)
-	totals: dict[str, float] = {code: 0.0 for code in COMPONENT_ORDER}
+	totals: dict[str, float] = {}
+	ordered: list[dict[str, Any]] = []
 	for r in rows:
 		code = r["code"]
-		# Even ad-hoc/operator-added types should be included so the chart
-		# shows them; we'll surface them under their own code.
-		totals[code] = flt(r.get("total") or 0)
-	return totals
+		amt = flt(r.get("total") or 0)
+		totals[code] = amt
+		ordered.append(
+			{
+				"code": code,
+				"label": r.get("type_label") or code,
+				"sort_order": cintish(r.get("sort_order")),
+				"amount": amt,
+			}
+		)
+	return totals, ordered
+
+
+def cintish(v: Any) -> int:
+	try:
+		return int(v)
+	except (TypeError, ValueError):
+		return 9999
 
 
 @frappe.whitelist()
@@ -152,7 +175,7 @@ def get_tour_cost_breakdown(tour: str | None = None) -> dict[str, Any]:
 	tour = (tour or "").strip() or None
 
 	booking = _booking_metrics(tour)
-	components = _component_totals(tour)
+	components, ordered_rows = _component_rollup(tour)
 	total_cost = flt(sum(components.values()))
 	gelir = booking["gelir"]
 	net_kar = flt(gelir - total_cost)
@@ -165,28 +188,34 @@ def get_tour_cost_breakdown(tour: str | None = None) -> dict[str, Any]:
 	per_person_profit = flt(net_kar / kisi) if kisi else 0.0
 	meal_ratio = flt(components.get("MEAL", 0) / total_cost) if total_cost > 0 else 0.0
 
-	# Component dict + chart series (skip zero entries from the doughnut so
-	# the picture stays legible; keep them in the cards for completeness).
 	components_payload: dict[str, dict[str, Any]] = {}
+	component_order: list[str] = []
 	chart_labels: list[str] = []
 	chart_values: list[float] = []
 	chart_colors: list[str] = []
-	for spec in COMPONENT_DISPLAY:
-		amt = flt(components.get(spec["code"], 0))
-		components_payload[spec["code"]] = {
-			"label":  spec["label"],
+	for row in ordered_rows:
+		code = row["code"]
+		component_order.append(code)
+		lab = str(row.get("label") or code)
+		amt = flt(row.get("amount") or 0)
+		hexc = CHART_HEX_BY_CODE.get(code, "#94a3b8")
+		components_payload[code] = {
+			"label": lab,
 			"amount": amt,
-			"color":  spec["color"],
+			"color": hexc,
+			"hide_if_zero": code in ("MEAL", "OTHER"),
 		}
+		# Doughnut: only positive segments; meal/other omitted when 0 (UX spec).
 		if amt > 0:
-			chart_labels.append(spec["label"])
+			chart_labels.append(lab)
 			chart_values.append(amt)
-			chart_colors.append(spec["color"])
+			chart_colors.append(hexc)
 
 	return {
 		"tour": tour,
 		"currency": CURRENCY,
 		"tours": _list_tour_options(),
+		"component_order": component_order,
 		"kisi_sayisi": booking["kisi_sayisi"],
 		"umreci_count": booking["umreci_count"],
 		"non_umreci_count": booking["non_umreci_count"],
@@ -205,6 +234,7 @@ def get_tour_cost_breakdown(tour: str | None = None) -> dict[str, Any]:
 			"labels": chart_labels,
 			"datasets": [{"name": _("Maliyet"), "values": chart_values}],
 			"colors": chart_colors,
+			"total_for_share": total_cost,
 		},
 	}
 

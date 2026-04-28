@@ -19,17 +19,7 @@
   "iki_kisilik_oda",
   "uc_kisilik_oda",
   "dort_kisilik_oda",
-  "para_birimi",
-  "operasyonel_gunler_section",
-  "mekke_days",
-  "medine_days",
-  "col_break_meal_1",
-  "mekke_meal_price_sar",
-  "medine_meal_price_sar",
-  "col_break_meal_2",
-  "sar_to_usd_rate",
-  "other_cost_per_person",
-  "sar_currency"
+  "para_birimi"
  ],
  "fields": [
   {
@@ -122,71 +112,6 @@
    "label": "Para Birimi",
    "options": "Currency",
    "reqd": 1
-  },
-  {
-   "fieldname": "operasyonel_gunler_section",
-   "fieldtype": "Section Break",
-   "label": "Operasyonel Günler ve Yemek"
-  },
-  {
-   "fieldname": "mekke_days",
-   "fieldtype": "Int",
-   "label": "Mekke Gün Sayısı",
-   "default": "0"
-  },
-  {
-   "fieldname": "medine_days",
-   "fieldtype": "Int",
-   "label": "Medine Gün Sayısı",
-   "default": "0"
-  },
-  {
-   "fieldname": "col_break_meal_1",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "mekke_meal_price_sar",
-   "fieldtype": "Currency",
-   "label": "Mekke Günlük Yemek (SAR)",
-   "options": "sar_currency",
-   "default": "0"
-  },
-  {
-   "fieldname": "medine_meal_price_sar",
-   "fieldtype": "Currency",
-   "label": "Medine Günlük Yemek (SAR)",
-   "options": "sar_currency",
-   "default": "0"
-  },
-  {
-   "fieldname": "col_break_meal_2",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "sar_to_usd_rate",
-   "fieldtype": "Float",
-   "label": "SAR → USD Kuru",
-   "precision": "6",
-   "default": "3.75",
-   "description": "Mekke/Medine yemek bedeli SAR cinsinden girilir; bu oran ile USD'a çevrilir."
-  },
-  {
-   "fieldname": "other_cost_per_person",
-   "fieldtype": "Currency",
-   "label": "Kişi Başı Diğer Maliyet",
-   "options": "para_birimi",
-   "default": "0",
-   "description": "Tur kapsamında her UMRECI için sabit ek maliyet (örn. transfer, hediye)."
-  },
-  {
-   "fieldname": "sar_currency",
-   "fieldtype": "Link",
-   "options": "Currency",
-   "label": "SAR Helper",
-   "default": "SAR",
-   "hidden": 1,
-   "read_only": 1,
-   "print_hide": 1
   }
  ],
  "grid_page_length": 50,

@@ -35,7 +35,7 @@ from datetime import date
 from typing import Any
 
 import frappe
-from frappe.utils import cint, flt, getdate
+from frappe.utils import flt, getdate
 
 UCAK_COMPONENT = "U\u00e7ak"
 PAYING_STATUS = "UMRECI"
@@ -145,8 +145,9 @@ def lookup_visa_cost(tur: str | None, vize_tipi: str | None) -> float:
 	return flt(frappe.db.get_value("Tour Visa Cost Rule", name, "tutar") or 0)
 
 
-def lookup_diyanet_cost(tur: str | None, diyanet_kart_var: int | None) -> float:
-	if not tur or not cint(diyanet_kart_var):
+def lookup_diyanet_cost(tur: str | None, _diyanet_kart_var: int | None = None) -> float:
+	"""Tour `Tour Diyanet Card Rule` sets tutar. The booking checkbox is not a gate (legacy bug)."""
+	if not tur:
 		return 0.0
 	name = frappe.db.get_value("Tour Diyanet Card Rule", {"tur": tur}, "name")
 	if not name:

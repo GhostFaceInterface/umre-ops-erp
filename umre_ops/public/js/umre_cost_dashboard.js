@@ -143,7 +143,7 @@
 
 		frappe.call({
 			method: ENDPOINT,
-			args: { tour: _state.tour || "" },
+			args: { tour: _state.tour || "", _: Date.now() },
 			freeze: false
 		}).then((r) => {
 			_state.loading = false;
@@ -177,13 +177,18 @@
 			hero_cell("profit " + profit_loss, __("Net Kar"), fmt_money(p.net_kar, p.currency), __("Kalan alacak") + ": " + fmt_money(p.kalan_alacak, p.currency))
 		].join("");
 
-		// Cost cards.
+		// Cost cards (order = Cost Type.sort_order from server; meal/other hidden if 0).
 		const cards = panel.querySelector("#umre-fin-cards");
 		const total = Number(p.total_cost || 0);
-		const ordered_codes = ["HOTEL", "FLIGHT", "VISA", "DIYANET", "MEAL", "OTHER", "MANUAL"];
+		const ordered_codes = (p.component_order && p.component_order.length)
+			? p.component_order
+			: Object.keys(p.components || {});
 		cards.innerHTML = ordered_codes.map((code) => {
 			const c = (p.components || {})[code] || { label: code, amount: 0, color: "#dc2626" };
 			const amt = Number(c.amount || 0);
+			if (c.hide_if_zero && amt <= 0) {
+				return "";
+			}
 			const share = total > 0 ? (amt / total) : 0;
 			const zero_class = amt > 0 ? "" : " is-zero";
 			return `
@@ -239,6 +244,7 @@
 			host.innerHTML = `<div class="umre-fin-empty">${__("Grafik kütüphanesi yüklenmedi.")}</div>`;
 			return;
 		}
+		const shareTot = Number((p.chart && p.chart.total_for_share) || p.total_cost || 0);
 		_state.chart = new frappe.Chart(host, {
 			type: "donut",
 			data: {
@@ -249,7 +255,11 @@
 			colors: (p.chart && p.chart.colors) || [],
 			truncateLegends: false,
 			tooltipOptions: {
-				formatTooltipY: (d) => fmt_money(d, p.currency)
+				formatTooltipY: (d) => {
+					const v = Number(d || 0);
+					const pct = shareTot > 0 ? ((v / shareTot) * 100).toFixed(1) : "0.0";
+					return fmt_money(v, p.currency) + " (" + pct + "%)";
+				}
 			}
 		});
 	}
@@ -287,7 +297,14 @@
 		// even without a realtime event from the server).
 		$(document).on("after_save", function (_evt, doc) {
 			if (!doc) return;
-			if (doc.doctype === "Umre Booking" || doc.doctype === "Cost Component") {
+			if (
+				doc.doctype === "Umre Booking" ||
+				doc.doctype === "Cost Component" ||
+				doc.doctype === "Umre Tour" ||
+				doc.doctype === "Tour Cost Configuration" ||
+				doc.doctype === "Meal Cost Rule" ||
+				doc.doctype === "Other Cost Rule"
+			) {
 				schedule_refresh(500);
 			}
 		});
