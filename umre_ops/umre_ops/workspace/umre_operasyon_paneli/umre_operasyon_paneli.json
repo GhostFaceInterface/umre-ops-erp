@@ -204,7 +204,7 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "GENEL GİDERLER",
-   "link_count": 3,
+   "link_count": 4,
    "onboard": 0,
    "type": "Card Break",
    "icon": "wallet"
@@ -244,6 +244,18 @@
    "onboard": 0,
    "type": "Link",
    "icon": "currency"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Genel Gider Listesi",
+   "link_count": 0,
+   "link_to": "genel-gider-listesi",
+   "link_type": "Page",
+   "onboard": 0,
+   "type": "Link",
+   "icon": "list"
   },
   {
    "hidden": 0,

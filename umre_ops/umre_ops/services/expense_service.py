@@ -35,6 +35,7 @@ def normalize_filters(filters: dict[str, Any] | str | None = None) -> dict[str, 
 		"expense_category",
 		"currency",
 		"money_account",
+		"status",
 		"from_date",
 		"to_date",
 	}
@@ -49,6 +50,20 @@ def normalize_filters(filters: dict[str, Any] | str | None = None) -> dict[str, 
 def get_active_season(required: bool = False) -> str | None:
 	"""Expose the global active Umre season for forms and dashboard clients."""
 	return _get_active_season(required=bool(required))
+
+
+@frappe.whitelist()
+def get_seasons() -> list[dict[str, Any]]:
+	"""Return seasons for expense-entry selection."""
+	if not frappe.db.exists("DocType", "Umre Season"):
+		return []
+
+	return frappe.get_all(
+		"Umre Season",
+		fields=["name", "season_name", "is_active", "start_date", "end_date"],
+		order_by="is_active desc, start_date desc, modified desc",
+		limit_page_length=0,
+	)
 
 
 def _filters_with_active_season(filters: dict[str, Any] | str | None = None) -> dict[str, Any]:
@@ -70,6 +85,39 @@ def _where_clause(filters: dict[str, Any] | str | None = None) -> tuple[str, dic
 		params["season"] = filters["season"]
 	else:
 		conditions.append("1 = 0")
+	expense_category = filters.get("expense_category") or filters.get("category")
+	if expense_category:
+		conditions.append("oe.expense_category = %(expense_category)s")
+		params["expense_category"] = expense_category
+	if filters.get("currency"):
+		conditions.append("oe.currency = %(currency)s")
+		params["currency"] = filters["currency"]
+	if filters.get("money_account"):
+		conditions.append("oe.money_account = %(money_account)s")
+		params["money_account"] = filters["money_account"]
+	if filters.get("from_date"):
+		conditions.append("oe.expense_date >= %(from_date)s")
+		params["from_date"] = filters["from_date"]
+	if filters.get("to_date"):
+		conditions.append("oe.expense_date <= %(to_date)s")
+		params["to_date"] = filters["to_date"]
+
+	return " AND ".join(conditions), params
+
+
+def _entry_where_clause(filters: dict[str, Any] | str | None = None) -> tuple[str, dict[str, Any]]:
+	filters = _filters_with_active_season(filters)
+	conditions: list[str] = []
+	params: dict[str, Any] = {}
+
+	if filters.get("season"):
+		conditions.append("oe.season = %(season)s")
+		params["season"] = filters["season"]
+	else:
+		conditions.append("1 = 0")
+	if filters.get("status"):
+		conditions.append("oe.status = %(status)s")
+		params["status"] = filters["status"]
 	expense_category = filters.get("expense_category") or filters.get("category")
 	if expense_category:
 		conditions.append("oe.expense_category = %(expense_category)s")
@@ -231,6 +279,82 @@ def get_expense_breakdown_by_item(filters: dict[str, Any] | str | None = None) -
 		}
 		for row in rows
 	]
+
+
+@frappe.whitelist()
+def get_operational_expense_entries(filters: dict[str, Any] | str | None = None) -> dict[str, Any]:
+	"""Return season expense rows for the controlled expense list page.
+
+	The dashboard remains stricter and aggregates only ``Confirmed`` rows. This
+	list intentionally includes Draft/Cancelled rows too, so users can see why a
+	recently-entered expense may not affect the dashboard total yet.
+	"""
+	effective_filters = _filters_with_active_season(filters)
+	if not _has_operational_expense_doctype():
+		return {"active_season": effective_filters.get("season"), "entries": []}
+
+	where, params = _entry_where_clause(effective_filters)
+	rows = frappe.db.sql(
+		f"""
+		SELECT
+			oe.name,
+			oe.season,
+			oe.expense_date,
+			oe.status,
+			oe.paid_to,
+			oe.expense_category,
+			COALESCE(cat.category_name, oe.expense_category, %(uncategorized)s) AS category_label,
+			{_main_category_label_columns()},
+			oe.amount,
+			oe.currency,
+			oe.usd_exchange_rate,
+			oe.usd_amount,
+			oe.money_account,
+			oe.financial_institution,
+			oe.receipt_attachment,
+			oe.description,
+			oe.modified
+		FROM `tabOperational Expense` oe
+		{_category_joins()}
+		WHERE {where}
+		ORDER BY oe.expense_date DESC, oe.modified DESC
+		""",
+		{**params, "uncategorized": _("Kategorisiz")},
+		as_dict=True,
+	)
+
+	status_counts: dict[str, int] = {"Draft": 0, "Confirmed": 0, "Cancelled": 0}
+	entries: list[dict[str, Any]] = []
+	for row in rows:
+		status = row.get("status") or "Draft"
+		status_counts[status] = status_counts.get(status, 0) + 1
+		entries.append(
+			{
+				"name": row.get("name"),
+				"season": row.get("season"),
+				"expense_date": row.get("expense_date"),
+				"status": status,
+				"paid_to": row.get("paid_to"),
+				"expense_category": row.get("expense_category"),
+				"category_label": row.get("category_label") or _("Kategorisiz"),
+				"main_category_label": row.get("main_label") or _("Kategorisiz"),
+				"amount": flt(row.get("amount"), 2),
+				"currency": row.get("currency") or CURRENCY,
+				"usd_exchange_rate": flt(row.get("usd_exchange_rate"), 6),
+				"usd_amount": flt(row.get("usd_amount"), 2),
+				"money_account": row.get("money_account"),
+				"financial_institution": row.get("financial_institution"),
+				"receipt_attachment": row.get("receipt_attachment"),
+				"description": row.get("description"),
+				"modified": row.get("modified"),
+			}
+		)
+
+	return {
+		"active_season": effective_filters.get("season"),
+		"entries": entries,
+		"status_counts": status_counts,
+	}
 
 
 def get_monthly_expense_trend(filters: dict[str, Any] | str | None = None) -> list[dict[str, Any]]:

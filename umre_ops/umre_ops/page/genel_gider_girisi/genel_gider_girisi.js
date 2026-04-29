@@ -10,6 +10,8 @@ class GenelGiderGirisi {
 			single_column: true
 		});
 		this.active_season = null;
+		this.selected_season = null;
+		this.seasons = [];
 		this.taxonomy = [];
 		this.make();
 	}
@@ -26,15 +28,21 @@ class GenelGiderGirisi {
 	}
 
 	load() {
-		frappe.call({
-			method: "umre_ops.umre_ops.services.expense_service.get_operational_expense_taxonomy"
-		}).then((r) => {
-			this.taxonomy = r.message || [];
-			return frappe.call({
+		Promise.all([
+			frappe.call({
+				method: "umre_ops.umre_ops.services.expense_service.get_operational_expense_taxonomy"
+			}),
+			frappe.call({
 				method: "umre_ops.umre_ops.services.expense_service.get_active_season"
-			});
-		}).then((r) => {
-			this.active_season = r.message || null;
+			}),
+			frappe.call({
+				method: "umre_ops.umre_ops.services.expense_service.get_seasons"
+			})
+		]).then(([taxonomy_response, active_response, seasons_response]) => {
+			this.taxonomy = taxonomy_response.message || [];
+			this.active_season = active_response.message || null;
+			this.selected_season = this.active_season;
+			this.seasons = seasons_response.message || [];
 			this.render();
 		}).catch((err) => {
 			console.error("Expense taxonomy load failed", err);
@@ -61,9 +69,17 @@ class GenelGiderGirisi {
 		}
 
 		const html = `
-			<div class="mb-4">
-				<div class="text-muted text-uppercase small">${__("Aktif Sezon")}</div>
-				<div class="h4 mb-0">${frappe.utils.escape_html(this.active_season)}</div>
+			<div class="mb-4" style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+				<div>
+					<div class="text-muted text-uppercase small">${__("Aktif Sezon")}</div>
+					<div class="h4 mb-0">${frappe.utils.escape_html(this.active_season)}</div>
+				</div>
+				<div style="min-width:260px;">
+					<label class="text-muted text-uppercase small" for="umre-expense-season" style="display:block;margin-bottom:4px;">${__("Gider Sezonu")}</label>
+					<select id="umre-expense-season" class="form-control" style="height:34px;border-color:#cfd4dc;">
+						${this.render_season_options()}
+					</select>
+				</div>
 			</div>
 			<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;">
 				${this.taxonomy.map((group) => this.render_group(group)).join("")}
@@ -75,11 +91,38 @@ class GenelGiderGirisi {
 
 	render_group(group) {
 		return `
-			<div class="frappe-card p-4">
-				<div class="h5 mb-3" style="line-height:1.25;">${frappe.utils.escape_html(group.label || group.name)}</div>
+			<div class="frappe-card p-4" style="border:1px solid #d5dae1;box-shadow:0 1px 2px rgba(15,23,42,0.04);background:#fff;">
+				<div class="h5 mb-3" style="line-height:1.25;text-transform:uppercase;letter-spacing:0;font-weight:700;">${frappe.utils.escape_html(this.group_title(group))}</div>
 				${(group.children || []).map((child) => this.render_node(child)).join("")}
 			</div>
 		`;
+	}
+
+	render_season_options() {
+		const seen = new Set();
+		const rows = [];
+		(this.seasons || []).forEach((season) => {
+			if (!season.name || seen.has(season.name)) return;
+			seen.add(season.name);
+			rows.push(season);
+		});
+		if (this.selected_season && !seen.has(this.selected_season)) {
+			rows.unshift({ name: this.selected_season, season_name: this.selected_season });
+		}
+		return rows.map((season) => {
+			const name = season.name || "";
+			const label = season.season_name || season.name || "";
+			const selected = name === this.selected_season ? "selected" : "";
+			return `<option value="${frappe.utils.escape_html(name)}" ${selected}>${frappe.utils.escape_html(label)}</option>`;
+		}).join("");
+	}
+
+	group_title(group) {
+		const label = group.label || group.name || "";
+		if (typeof label.toLocaleUpperCase === "function") {
+			return label.toLocaleUpperCase("tr-TR");
+		}
+		return label.toUpperCase();
 	}
 
 	render_node(node) {
@@ -116,6 +159,9 @@ class GenelGiderGirisi {
 	}
 
 	bind_actions() {
+		this.container.find("#umre-expense-season").on("change", (event) => {
+			this.selected_season = $(event.currentTarget).val() || this.active_season;
+		});
 		this.container.find("[data-expense-category]").on("click", (event) => {
 			const category = $(event.currentTarget).attr("data-expense-category");
 			this.create_expense(category);
@@ -123,11 +169,16 @@ class GenelGiderGirisi {
 	}
 
 	create_expense(category) {
+		const season = this.selected_season || this.active_season;
+		if (!season) {
+			frappe.msgprint(__("Gider girişi için sezon seçilmelidir."));
+			return;
+		}
 		frappe.model.with_doctype("Operational Expense", () => {
 			const doc = frappe.model.get_new_doc("Operational Expense");
-			doc.season = this.active_season;
+			doc.season = season;
 			doc.expense_category = category;
-			doc.status = "Draft";
+			doc.status = "Confirmed";
 			frappe.set_route("Form", "Operational Expense", doc.name);
 		});
 	}

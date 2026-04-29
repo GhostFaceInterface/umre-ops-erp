@@ -204,7 +204,21 @@ def _bucket_for_operational_category(category_name: str | None) -> str:
 	n = category_name.lower()
 	if any(k in n for k in ("pazarlama", "reklam")):
 		return "marketing"
-	if "ofis" in n:
+	if any(
+		k in n
+		for k in (
+			"ofis",
+			"kira",
+			"elektrik",
+			"doğalgaz",
+			"dogalgaz",
+			"internet",
+			"bilişim",
+			"bilisim",
+			"yemek - gıda",
+			"yemek - gida",
+		)
+	) or n.strip() == "su":
 		return "office"
 	if "vergi" in n:
 		return "taxes"
