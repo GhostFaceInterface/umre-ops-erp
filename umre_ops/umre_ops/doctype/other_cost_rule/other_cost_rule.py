@@ -5,9 +5,12 @@ from __future__ import annotations
 import frappe
 from frappe.model.document import Document
 
+from umre_ops.umre_ops.services.season_service import apply_active_season
+
 
 class OtherCostRule(Document):
 	def validate(self) -> None:
+		apply_active_season(self)
 		if self.tour and not self.currency:
 			self.currency = (
 				frappe.db.get_value("Umre Tour", self.tour, "para_birimi") or "USD"

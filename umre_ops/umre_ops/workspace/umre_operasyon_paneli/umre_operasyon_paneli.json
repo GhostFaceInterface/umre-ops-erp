@@ -17,7 +17,7 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "OPERASYON",
-   "link_count": 5,
+   "link_count": 6,
    "onboard": 0,
    "type": "Card Break",
    "icon": "organization"
@@ -81,6 +81,18 @@
    "onboard": 0,
    "type": "Link",
    "icon": "upload"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Umre Season",
+   "link_count": 0,
+   "link_to": "Umre Season",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link",
+   "icon": "calendar"
   },
   {
    "hidden": 0,
@@ -192,22 +204,10 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "GENEL GİDERLER",
-   "link_count": 6,
+   "link_count": 3,
    "onboard": 0,
    "type": "Card Break",
    "icon": "wallet"
-  },
-  {
-   "dependencies": "",
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Umre Season",
-   "link_count": 0,
-   "link_to": "Umre Season",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link",
-   "icon": "calendar"
   },
   {
    "dependencies": "",
@@ -237,83 +237,13 @@
    "dependencies": "",
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Operational Expense Category",
+   "label": "Genel Gider Girişi",
    "link_count": 0,
-   "link_to": "Operational Expense Category",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link",
-   "icon": "folder-open"
-  },
-  {
-   "dependencies": "",
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Operational Expense",
-   "link_count": 0,
-   "link_to": "Operational Expense",
-   "link_type": "DocType",
+   "link_to": "genel-gider-girisi",
+   "link_type": "Page",
    "onboard": 0,
    "type": "Link",
    "icon": "currency"
-  },
-  {
-   "dependencies": "",
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Cost Center",
-   "link_count": 0,
-   "link_to": "Cost Center",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link",
-   "icon": "tree"
-  },
-  {
-   "hidden": 1,
-   "is_query_report": 0,
-   "label": "Ödeme Kaydı",
-   "link_count": 0,
-   "link_to": "Payment Entry",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link",
-   "icon": "payment"
-  },
-  {
-   "hidden": 1,
-   "is_query_report": 0,
-   "label": "Yevmiye Kaydı",
-   "link_count": 0,
-   "link_to": "Journal Entry",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link",
-   "icon": "file"
-  },
-  {
-   "dependencies": "GL Entry",
-   "hidden": 1,
-   "is_query_report": 1,
-   "label": "General Ledger",
-   "link_count": 0,
-   "link_to": "General Ledger",
-   "link_type": "Report",
-   "onboard": 0,
-   "type": "Link",
-   "icon": "ledger",
-   "report_ref_doctype": "GL Entry"
-  },
-  {
-   "hidden": 1,
-   "is_query_report": 0,
-   "label": "Chart of Accounts",
-   "link_count": 0,
-   "link_to": "Account",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link",
-   "icon": "chart-of-accounts"
   },
   {
    "hidden": 0,

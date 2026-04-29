@@ -8,6 +8,7 @@ umre_ops.patches.salvage_umre_tour_meal_columns_pre
 
 [post_model_sync]
 umre_ops.patches.seed_phase2_operational_finance
+umre_ops.patches.seed_operational_expense_taxonomy
 # Data-only patches preferred. merge_umre_tour_salvage_into_domain_rules reads JSON (or legacy SELECT).
 umre_ops.patches.merge_umre_tour_salvage_into_domain_rules
 umre_ops.patches.reconcile_tour_hotel_bir_column

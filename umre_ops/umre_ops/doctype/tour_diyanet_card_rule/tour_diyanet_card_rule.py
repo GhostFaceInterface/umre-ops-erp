@@ -1,9 +1,11 @@
 # Copyright (c) 2026, Sermed Turizm and contributors
 # For license information, please see license.txt
 
-# import frappe
 from frappe.model.document import Document
+
+from umre_ops.umre_ops.services.season_service import apply_active_season
 
 
 class TourDiyanetCardRule(Document):
-	pass
+	def validate(self) -> None:
+		apply_active_season(self)

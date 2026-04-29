@@ -1,5 +1,13 @@
 // Operational Expense — USD önizleme (kayıt sunucuda validate ile kesinleşir)
 frappe.ui.form.on("Operational Expense", {
+	setup(frm) {
+		frm.set_query("expense_category", function () {
+			return { filters: { is_group: 0, is_active: 1 } };
+		});
+	},
+	onload(frm) {
+		default_active_season(frm);
+	},
 	amount(frm) {
 		preview_usd(frm);
 	},
@@ -13,9 +21,21 @@ frappe.ui.form.on("Operational Expense", {
 		preview_usd(frm);
 	},
 	refresh(frm) {
+		default_active_season(frm);
 		preview_usd(frm);
 	},
 });
+
+function default_active_season(frm) {
+	if (!frm.is_new() || frm.doc.season) return;
+	frappe.call({
+		method: "umre_ops.umre_ops.services.expense_service.get_active_season"
+	}).then((r) => {
+		if (r && r.message && !frm.doc.season) {
+			frm.set_value("season", r.message);
+		}
+	});
+}
 
 function preview_usd(frm) {
 	const cur = (frm.doc.currency || "").toString().toUpperCase();

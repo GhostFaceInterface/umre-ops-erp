@@ -50,7 +50,8 @@
    "fieldname": "active_season",
    "fieldtype": "Link",
    "label": "Aktif Sezon",
-   "options": "Umre Season"
+   "options": "Umre Season",
+   "reqd": 1
   },
   {
    "fieldname": "dashboard_default_view",
@@ -61,23 +62,27 @@
   {
    "fieldname": "cost_centers_section",
    "fieldtype": "Section Break",
+   "hidden": 1,
    "label": "Tour Maliyet Merkezleri"
   },
   {
    "fieldname": "umre_operasyon_root_cost_center",
    "fieldtype": "Link",
+   "hidden": 1,
    "label": "Umre Operasyon Kök Maliyet Merkezi",
    "options": "Cost Center"
   },
   {
    "fieldname": "genel_gider_cost_center",
    "fieldtype": "Link",
+   "hidden": 1,
    "label": "Genel Gider Maliyet Merkezi",
    "options": "Cost Center"
   },
   {
    "fieldname": "pazarlama_cost_center",
    "fieldtype": "Link",
+   "hidden": 1,
    "label": "Pazarlama Maliyet Merkezi",
    "options": "Cost Center"
   },

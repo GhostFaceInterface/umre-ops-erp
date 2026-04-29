@@ -8,6 +8,7 @@
  "field_order": [
   "temel_section",
   "tur",
+  "season",
   "yolcu_tipi",
   "expense_component",
   "tutar",
@@ -26,6 +27,15 @@
    "in_list_view": 1,
    "label": "Tur",
    "options": "Umre Tour",
+   "reqd": 1
+  },
+  {
+   "fieldname": "season",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Sezon",
+   "options": "Umre Season",
    "reqd": 1
   },
   {

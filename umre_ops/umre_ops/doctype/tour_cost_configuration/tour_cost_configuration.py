@@ -5,8 +5,13 @@ from __future__ import annotations
 import frappe
 from frappe.model.document import Document
 
+from umre_ops.umre_ops.services.season_service import apply_active_season
+
 
 class TourCostConfiguration(Document):
+	def validate(self) -> None:
+		apply_active_season(self)
+
 	def on_update(self) -> None:
 		_schedule(self.tour)
 

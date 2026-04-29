@@ -40,6 +40,7 @@ from typing import Any
 import frappe
 from frappe import _
 from frappe.utils import flt
+from umre_ops.umre_ops.services.expense_service import get_operational_dashboard_summary
 
 CURRENCY = "USD"
 
@@ -255,7 +256,7 @@ def get_operational_expense_dashboard(
 		w.append("oe.season = %(season)s")
 		params["season"] = season
 	if category:
-		w.append("oe.category = %(category)s")
+		w.append("oe.expense_category = %(category)s")
 		params["category"] = category
 	if currency:
 		w.append("oe.currency = %(currency)s")
@@ -283,7 +284,7 @@ def get_operational_expense_dashboard(
 		  c.category_name AS category_name,
 		  COALESCE(SUM(oe.usd_amount), 0) AS total_usd
 		FROM `tabOperational Expense` oe
-		LEFT JOIN `tabOperational Expense Category` c ON c.name = oe.category
+		LEFT JOIN `tabOperational Expense Category` c ON c.name = oe.expense_category
 		WHERE {where}
 		GROUP BY c.category_name
 		ORDER BY total_usd DESC
@@ -345,6 +346,23 @@ def get_operational_expense_dashboard(
 			),
 			"currencies": frappe.get_all("Currency", pluck="name", order_by="name asc"),
 		},
+	}
+
+
+@frappe.whitelist()
+def get_operational_dashboard_data(filters: dict[str, Any] | str | None = None) -> dict[str, Any]:
+	"""Combined endpoint for the full Umre dashboard.
+
+	Existing tour revenue/cost logic remains delegated to
+	``get_tour_cost_breakdown``. Operational expenses are aggregated through the
+	separate expense service.
+	"""
+	from umre_ops.umre_ops.services.expense_service import normalize_filters
+
+	filters = normalize_filters(filters)
+	return {
+		"tour_dashboard": get_tour_cost_breakdown(tour=filters.get("tour")),
+		"operational_dashboard": get_operational_dashboard_summary(filters),
 	}
 
 
