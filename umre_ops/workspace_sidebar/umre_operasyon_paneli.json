@@ -7,7 +7,7 @@
  "items": [
   {
    "type": "Link",
-   "label": "Home",
+   "label": "Ana Sayfa",
    "link_type": "Workspace",
    "link_to": "Umre Operasyon Paneli",
    "icon": "home",

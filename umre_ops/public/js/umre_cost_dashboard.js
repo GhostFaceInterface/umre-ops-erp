@@ -14,6 +14,7 @@
 	const WORKSPACE_NAME = "Umre Operasyon Paneli";
 	const WORKSPACE_ROUTES = ["umre-operasyon-paneli", "Umre Operasyon Paneli"];
 	const ENDPOINT = "umre_ops.umre_ops.services.dashboard_service.get_tour_cost_breakdown";
+	const COST_COLORS = ["#ff4d4f", "#ff7a45", "#ffa940", "#36cfc9", "#597ef7", "#9254de", "#13c2c2"];
 
 	let _state = {
 		tour: "",        // "" = all tours
@@ -54,6 +55,10 @@
 		return n.toFixed(1) + "%";
 	}
 
+	function fmt_pct_value(value) {
+		return Number(value || 0).toFixed(1) + "%";
+	}
+
 	function fmt_int(value) {
 		return Number(value || 0).toLocaleString("tr-TR");
 	}
@@ -72,9 +77,9 @@
 
 	function on_target_route() {
 		const route = (frappe.get_route && frappe.get_route()) || [];
-		if (!route || route.length < 2) return false;
-		if (route[0] !== "Workspaces") return false;
-		return WORKSPACE_ROUTES.includes(route[1]);
+		if (!route || !route.length) return false;
+		if (route[0] === "Workspaces" && WORKSPACE_ROUTES.includes(route[1])) return true;
+		return WORKSPACE_ROUTES.includes(route[0]) || route.join("/").includes("umre-operasyon-paneli");
 	}
 
 	function ensure_mounted() {
@@ -339,17 +344,52 @@
 		}).then((r) => {
 			_state.loading = false;
 			panel.classList.remove("umre-fin-loading");
-			if (!r || !r.message) return;
-			_state.last_payload = r.message;
-			render_payload(panel, r.message);
+			const data = r && r.message;
+			console.log("DASHBOARD DATA", data);
+			if (!is_valid_dashboard_data(data)) {
+				render_empty_dashboard(panel, __("Dashboard verisi eksik veya boş. Maliyet bileşenleri oluşmadan grafik çizilemez."));
+				return;
+			}
+			_state.last_payload = data;
+			render_payload(panel, data);
 		}).catch((err) => {
 			_state.loading = false;
 			panel.classList.remove("umre-fin-loading");
 			console.error("Umre cost dashboard refresh failed", err);
+			render_empty_dashboard(panel, __("Dashboard verisi alınamadı."));
 		});
 	}
 
+	function is_valid_dashboard_data(data) {
+		return Boolean(
+			data &&
+			data.kpis &&
+			Array.isArray(data.cost_breakdown) &&
+			data.cost_breakdown.length &&
+			data.performance &&
+			data.meta
+		);
+	}
+
+	function render_empty_dashboard(panel, message) {
+		panel.querySelector("#umre-fin-hero").innerHTML = `<div class="umre-fin-empty">${frappe.utils.escape_html(message)}</div>`;
+		panel.querySelector("#umre-fin-cards").innerHTML = "";
+		panel.querySelector("#umre-fin-chart").innerHTML = `<div class="umre-fin-empty">${frappe.utils.escape_html(message)}</div>`;
+		panel.querySelector("#umre-fin-kpi").innerHTML = "";
+		_state.chart = null;
+	}
+
 	function render_payload(panel, p) {
+		const k = p.kpis || {};
+		const rows = (p.cost_breakdown || []).map((row, idx) => ({
+			label: row.label || __("Maliyet"),
+			value: Number(row.value || 0),
+			color: COST_COLORS[idx % COST_COLORS.length]
+		}));
+		const perf = p.performance || {};
+		const meta = p.meta || {};
+		const currency = p.currency || "USD";
+
 		// Tour selector population (preserve current selection).
 		const sel = panel.querySelector("#umre-fin-tour");
 		const current = _state.tour;
@@ -361,31 +401,24 @@
 
 		// Hero strip.
 		const hero = panel.querySelector("#umre-fin-hero");
-		const profit_loss = (p.net_kar || 0) < 0 ? "is-loss" : "";
+		const profit_loss = (k.net_profit || 0) < 0 ? "is-loss" : "";
 		hero.innerHTML = [
-			hero_cell("revenue", __("Gelir"),         fmt_money(p.gelir, p.currency),       __("Tahsil edilen") + ": " + fmt_money(p.tahsil_edilen, p.currency)),
-			hero_cell("cost",    __("Toplam Maliyet"), fmt_money(p.total_cost, p.currency), __("Kişi sayısı") + ": " + fmt_int(p.kisi_sayisi)),
-			hero_cell("profit " + profit_loss, __("Net Kar"), fmt_money(p.net_kar, p.currency), __("Kalan alacak") + ": " + fmt_money(p.kalan_alacak, p.currency))
+			hero_cell("revenue", __("Gelir"), fmt_money(k.total_revenue, currency), ""),
+			hero_cell("cost", __("Toplam Maliyet"), fmt_money(k.total_cost, currency), __("Kişi sayısı") + ": " + fmt_int(meta.kisi_sayisi)),
+			hero_cell("profit " + profit_loss, __("Net Kar"), fmt_money(k.net_profit, currency), "")
 		].join("");
 
-		// Cost cards (order = Cost Type.sort_order from server; meal/other hidden if 0).
+		// Cost cards from the strict API contract: cost_breakdown[{label, value}].
 		const cards = panel.querySelector("#umre-fin-cards");
-		const total = Number(p.total_cost || 0);
-		const ordered_codes = (p.component_order && p.component_order.length)
-			? p.component_order
-			: Object.keys(p.components || {});
-		cards.innerHTML = ordered_codes.map((code) => {
-			const c = (p.components || {})[code] || { label: code, amount: 0, color: "#dc2626" };
-			const amt = Number(c.amount || 0);
-			if (c.hide_if_zero && amt <= 0) {
-				return "";
-			}
+		const total = Number(k.total_cost || 0);
+		cards.innerHTML = rows.map((c) => {
+			const amt = Number(c.value || 0);
 			const share = total > 0 ? (amt / total) : 0;
 			const zero_class = amt > 0 ? "" : " is-zero";
 			return `
 				<div class="umre-fin-cost-card${zero_class}" style="--cost-color:${c.color}">
 					<div class="umre-fin-cost-card__label">${frappe.utils.escape_html(c.label)}</div>
-					<div class="umre-fin-cost-card__amount">${fmt_money(amt, p.currency)}</div>
+					<div class="umre-fin-cost-card__amount">${fmt_money(amt, currency)}</div>
 					<div class="umre-fin-cost-card__share">${fmt_pct(share)}</div>
 				</div>`;
 		}).join("");
@@ -395,12 +428,11 @@
 
 		// KPIs.
 		const kpi = panel.querySelector("#umre-fin-kpi");
-		const k = p.kpis || {};
-		const kbk_cls = (k.kisi_basi_kar || 0) < 0 ? "is-loss" : "";
+		const kbk_cls = (perf.profit_per_person || 0) < 0 ? "is-loss" : "";
 		kpi.innerHTML = [
-			kpi_cell("cost",   __("Kişi Başı Maliyet"), fmt_money(k.kisi_basi_maliyet, p.currency)),
-			kpi_cell("profit " + kbk_cls, __("Kişi Başı Kar"), fmt_money(k.kisi_basi_kar, p.currency)),
-			kpi_cell("ratio",  __("Yemek Oranı"),       fmt_pct(k.yemek_orani))
+			kpi_cell("cost", __("Kişi Başı Maliyet"), fmt_money(perf.cost_per_person, currency)),
+			kpi_cell("profit " + kbk_cls, __("Kişi Başı Kar"), fmt_money(perf.profit_per_person, currency)),
+			kpi_cell("ratio", __("Yemek Oranı"), fmt_pct_value(perf.food_ratio))
 		].join("");
 	}
 
@@ -424,7 +456,9 @@
 	function render_chart(panel, p) {
 		const host = panel.querySelector("#umre-fin-chart");
 		host.innerHTML = ""; // reset
-		const labels = (p.chart && p.chart.labels) || [];
+		const rows = p.cost_breakdown || [];
+		const labels = rows.map((x) => x.label);
+		const values = rows.map((x) => Number(x.value || 0));
 		if (!labels.length) {
 			host.innerHTML = `<div class="umre-fin-empty">${__("Maliyet bileşeni bulunamadı.")}</div>`;
 			_state.chart = null;
@@ -435,21 +469,22 @@
 			host.innerHTML = `<div class="umre-fin-empty">${__("Grafik kütüphanesi yüklenmedi.")}</div>`;
 			return;
 		}
-		const shareTot = Number((p.chart && p.chart.total_for_share) || p.total_cost || 0);
+		const shareTot = values.reduce((sum, value) => sum + value, 0);
+		const currency = p.currency || "USD";
 		_state.chart = new frappe.Chart(host, {
 			type: "donut",
 			data: {
 				labels: labels,
-				datasets: (p.chart && p.chart.datasets) || []
+				datasets: [{ values: values }]
 			},
 			height: 280,
-			colors: (p.chart && p.chart.colors) || [],
+			colors: COST_COLORS,
 			truncateLegends: false,
 			tooltipOptions: {
 				formatTooltipY: (d) => {
 					const v = Number(d || 0);
 					const pct = shareTot > 0 ? ((v / shareTot) * 100).toFixed(1) : "0.0";
-					return fmt_money(v, p.currency) + " (" + pct + "%)";
+					return fmt_money(v, currency) + " (" + pct + "%)";
 				}
 			}
 		});

@@ -1,6 +1,7 @@
 /* Umre Operasyon Paneli — Financial Dashboard */
 .umre-fin-panel {
-  margin: 16px 0 32px 0;
+  max-width: 1200px;
+  margin: 16px auto 32px auto;
   padding: 20px 24px;
   background: var(--bg-color, #f7f8fa);
   border: 1px solid var(--dark-border-color, #e5e7eb);

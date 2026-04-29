@@ -29,8 +29,8 @@ app_license = "mit"
 # app_include_js = "/assets/umre_ops/js/umre_ops.js"
 
 # Umre Financial Dashboard — mounted on the "Umre Operasyon Paneli" workspace.
-# We deliberately load these on every desk page so the panel can self-detect
-# its target workspace via route changes; they are tiny and route-gated.
+# These desk assets are route-gated in JS, so they render only on the target
+# workspace and keep the dashboard visible above the operational link cards.
 app_include_css = ["/assets/umre_ops/css/umre_cost_dashboard.css"]
 app_include_js = ["/assets/umre_ops/js/umre_cost_dashboard.js"]
 
@@ -262,4 +262,3 @@ doctype_js = {"Operational Expense": "public/js/operational_expense.js"}
 # ------------
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
-

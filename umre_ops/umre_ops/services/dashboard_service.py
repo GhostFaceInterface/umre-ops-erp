@@ -7,36 +7,23 @@ Public, whitelisted entry point:
 
     get_tour_cost_breakdown(tour: str | None = None) -> dict
 
-Returns a single, complete payload for the Umre Operasyon Paneli dashboard:
+Returns the strict data contract for the Umre Operasyon Paneli dashboard:
 
     {
-        "tour":                    str | None,           # echoed back
-        "currency":                str,                  # canonical USD
-        "tours":                   [{"name", "label"}],  # selector options
-        "kisi_sayisi":             int,                  # all participants
-        "umreci_count":            int,
-        "non_umreci_count":        int,
-        "gelir":                   float,                # UMRECI ucret total
-        "tahsil_edilen":           float,                # UMRECI odenen total
-        "kalan_alacak":            float,                # gelir - tahsil_edilen
-        "components": {
-            "HOTEL":   {"label", "amount", "color"},
-            "FLIGHT":  ...,
-            ...
-            "MANUAL":  ...
-        },
-        "total_cost":              float,                # SUM(Cost Component.amount)
-        "net_kar":                 float,                # gelir - total_cost
         "kpis": {
-            "kisi_basi_maliyet":   float,
-            "kisi_basi_kar":       float,
-            "yemek_orani":         float                 # 0..1
+            "total_revenue": float,
+            "total_cost": float,
+            "net_profit": float,
         },
-        "chart": {                                       # ready for Frappe Charts
-            "labels":  [...],
-            "datasets": [{"name": "Maliyet", "values": [...]}],
-            "colors":  [...]
-        }
+        "cost_breakdown": [{"label": str, "value": float}],
+        "performance": {
+            "cost_per_person": float,
+            "profit_per_person": float,
+            "food_ratio": float,  # percentage, 0..100
+        },
+        "meta": {
+            "kisi_sayisi": int,
+        },
     }
 
 Performance contract
@@ -165,7 +152,7 @@ def cintish(v: Any) -> int:
 
 @frappe.whitelist()
 def get_tour_cost_breakdown(tour: str | None = None) -> dict[str, Any]:
-	"""Single payload feeding the financial dashboard panel.
+	"""Return the strict payload feeding the custom financial dashboard.
 
 	`tour` is optional. When omitted (or empty), the breakdown aggregates
 	across every tour in the database — i.e. the company-wide view a manager
@@ -176,65 +163,35 @@ def get_tour_cost_breakdown(tour: str | None = None) -> dict[str, Any]:
 
 	booking = _booking_metrics(tour)
 	components, ordered_rows = _component_rollup(tour)
-	total_cost = flt(sum(components.values()))
-	gelir = booking["gelir"]
-	net_kar = flt(gelir - total_cost)
-	kalan = flt(gelir - booking["tahsil_edilen"])
-
-	# KPIs (zero-safe). Per spec: per-person metrics divide by total kişi
-	# sayısı (all participants on the tour, not just paying UMRECI).
+	total_cost = flt(sum(components.values()), 2)
+	total_revenue = flt(booking["gelir"], 2)
+	net_profit = flt(total_revenue - total_cost, 2)
 	kisi = booking["kisi_sayisi"] or 0
-	per_person_cost = flt(total_cost / kisi) if kisi else 0.0
-	per_person_profit = flt(net_kar / kisi) if kisi else 0.0
-	meal_ratio = flt(components.get("MEAL", 0) / total_cost) if total_cost > 0 else 0.0
-
-	components_payload: dict[str, dict[str, Any]] = {}
-	component_order: list[str] = []
-	chart_labels: list[str] = []
-	chart_values: list[float] = []
-	chart_colors: list[str] = []
-	for row in ordered_rows:
-		code = row["code"]
-		component_order.append(code)
-		lab = str(row.get("label") or code)
-		amt = flt(row.get("amount") or 0)
-		hexc = CHART_HEX_BY_CODE.get(code, "#94a3b8")
-		components_payload[code] = {
-			"label": lab,
-			"amount": amt,
-			"color": hexc,
-			"hide_if_zero": code in ("MEAL", "OTHER"),
+	cost_per_person = flt(total_cost / kisi, 2) if kisi else 0.0
+	profit_per_person = flt(net_profit / kisi, 2) if kisi else 0.0
+	food_ratio = flt((components.get("MEAL", 0) / total_cost) * 100, 2) if total_cost > 0 else 0.0
+	cost_breakdown = [
+		{
+			"label": str(row.get("label") or row.get("code")),
+			"value": flt(row.get("amount") or 0, 2),
 		}
-		# Doughnut: only positive segments; meal/other omitted when 0 (UX spec).
-		if amt > 0:
-			chart_labels.append(lab)
-			chart_values.append(amt)
-			chart_colors.append(hexc)
+		for row in ordered_rows
+	]
 
 	return {
-		"tour": tour,
-		"currency": CURRENCY,
-		"tours": _list_tour_options(),
-		"component_order": component_order,
-		"kisi_sayisi": booking["kisi_sayisi"],
-		"umreci_count": booking["umreci_count"],
-		"non_umreci_count": booking["non_umreci_count"],
-		"gelir": gelir,
-		"tahsil_edilen": booking["tahsil_edilen"],
-		"kalan_alacak": kalan,
-		"components": components_payload,
-		"total_cost": total_cost,
-		"net_kar": net_kar,
 		"kpis": {
-			"kisi_basi_maliyet": per_person_cost,
-			"kisi_basi_kar": per_person_profit,
-			"yemek_orani": meal_ratio,
+			"total_revenue": total_revenue,
+			"total_cost": total_cost,
+			"net_profit": net_profit,
 		},
-		"chart": {
-			"labels": chart_labels,
-			"datasets": [{"name": _("Maliyet"), "values": chart_values}],
-			"colors": chart_colors,
-			"total_for_share": total_cost,
+		"cost_breakdown": cost_breakdown,
+		"performance": {
+			"cost_per_person": cost_per_person,
+			"profit_per_person": profit_per_person,
+			"food_ratio": food_ratio,
+		},
+		"meta": {
+			"kisi_sayisi": booking["kisi_sayisi"],
 		},
 	}
 
