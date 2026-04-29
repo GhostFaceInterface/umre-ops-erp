@@ -65,7 +65,7 @@ class GenelGiderGirisi {
 				<div class="text-muted text-uppercase small">${__("Aktif Sezon")}</div>
 				<div class="h4 mb-0">${frappe.utils.escape_html(this.active_season)}</div>
 			</div>
-			<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;">
+			<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;">
 				${this.taxonomy.map((group) => this.render_group(group)).join("")}
 			</div>
 		`;
@@ -76,7 +76,7 @@ class GenelGiderGirisi {
 	render_group(group) {
 		return `
 			<div class="frappe-card p-4">
-				<div class="h5 mb-3">${frappe.utils.escape_html(group.label || group.name)}</div>
+				<div class="h5 mb-3" style="line-height:1.25;">${frappe.utils.escape_html(group.label || group.name)}</div>
 				${(group.children || []).map((child) => this.render_node(child)).join("")}
 			</div>
 		`;
@@ -89,14 +89,30 @@ class GenelGiderGirisi {
 				${(node.children || []).map((child) => this.render_node(child)).join("")}
 			`;
 		}
+		const label = node.label || node.name;
 		return `
-			<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border-color);">
-				<div>${frappe.utils.escape_html(node.label || node.name)}</div>
-				<button type="button" class="btn btn-xs btn-primary" data-expense-category="${frappe.utils.escape_html(node.name)}">
-					${__("Yeni Gider Ekle")}
+			<div style="display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border-color);">
+				<div style="min-width:0;line-height:1.35;">${frappe.utils.escape_html(label)}</div>
+				<button
+					type="button"
+					class="btn btn-xs btn-default"
+					data-expense-category="${frappe.utils.escape_html(node.name)}"
+					title="${frappe.utils.escape_html(__("Yeni gider ekle") + ": " + label)}"
+					aria-label="${frappe.utils.escape_html(__("Yeni gider ekle") + ": " + label)}"
+					style="display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:6px;background:var(--control-bg);border:1px solid var(--border-color);color:var(--text-color);font-weight:500;white-space:nowrap;box-shadow:none;"
+				>
+					${this.add_icon()}
+					<span>${__("Ekle")}</span>
 				</button>
 			</div>
 		`;
+	}
+
+	add_icon() {
+		if (frappe.utils && typeof frappe.utils.icon === "function") {
+			return frappe.utils.icon("add", "xs");
+		}
+		return `<span aria-hidden="true" style="font-size:14px;line-height:1;">+</span>`;
 	}
 
 	bind_actions() {

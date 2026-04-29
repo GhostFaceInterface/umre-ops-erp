@@ -21,29 +21,20 @@ TAXONOMY = (
 	(
 		"GENEL YÖNETİM GİDERLERİ",
 		(
-			(
-				"Ofis Giderleri",
-				(
-					"Bilişim teknolojileri ve yapay zeka",
-					"Doğalgaz",
-					"Elektrik",
-					"Kira",
-					"Ofise ait diğer giderler",
-					"Su",
-					"Yemek - Gıda",
-					"İnternet erişimi",
-				),
-			),
+			"Diğer genel yönetim giderleri",
 		),
 	),
 	(
-		"OPERASYON GİDERLERİ",
+		"Ofis Giderleri",
 		(
-			"Diyanet kart ödemesi",
-			"Operasyon anındaki diğer harcamalar",
-			"Otel",
-			"Uçak",
-			"Vize",
+			"Bilişim teknolojileri ve yapay zeka",
+			"Doğalgaz",
+			"Elektrik",
+			"Kira",
+			"Ofise ait diğer giderler",
+			"Su",
+			"Yemek - Gıda",
+			"İnternet erişimi",
 		),
 	),
 	("PERSONEL GİDERLERİ", ("Personel Maaşı",)),
@@ -70,7 +61,12 @@ LEGACY_CATEGORY_MAP = {
 	"Reklam": "Reklamlar",
 	"Vergiler": "0015 GERÇEK USULDE KATMA DEĞER VERGİSİ",
 	"IT / Yazılım": "Bilişim teknolojileri ve yapay zeka",
-	"Diğer Giderler": "Operasyon anındaki diğer harcamalar",
+	"Diğer Giderler": "Diğer genel yönetim giderleri",
+	"Diyanet kart ödemesi": "Diğer genel yönetim giderleri",
+	"Operasyon anındaki diğer harcamalar": "Diğer genel yönetim giderleri",
+	"Otel": "Diğer genel yönetim giderleri",
+	"Uçak": "Diğer genel yönetim giderleri",
+	"Vize": "Diğer genel yönetim giderleri",
 }
 
 
