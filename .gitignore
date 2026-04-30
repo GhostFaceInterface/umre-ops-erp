@@ -26,6 +26,7 @@ MANIFEST
 # Environments
 .env
 .venv
+.venv-code-intel/
 env/
 venv/
 ENV/

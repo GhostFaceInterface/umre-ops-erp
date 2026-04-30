@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "umre_ops_code_intelligence": {
+      "command": "/bin/bash",
+      "args": [
+        "scripts/run_mcp_server.sh"
+      ],
+      "env": {
+        "CODEBASE_ROOT": "."
+      }
+    }
+  }
+}
