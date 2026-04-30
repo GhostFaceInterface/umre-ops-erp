@@ -173,8 +173,16 @@ The MCP tools are:
 - `get_function(name, limit, max_chars)`
 - `code_index_status()`
 - `estimate_context_savings(query, limit)`
+- `mcp_usage_summary(limit)`
 
 Do not mix embeddings from different models in the same vector table. Changing `CODE_INTEL_MODEL_NAME` requires resetting the vector table and reindexing.
+
+MCP usage telemetry is written automatically to `.code-intel/mcp_usage.jsonl`
+while the MCP server is running. Summarize token savings and timing with:
+
+```bash
+python scripts/mcp_usage_report.py
+```
 
 ### CI
 

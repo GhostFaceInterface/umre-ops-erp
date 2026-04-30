@@ -82,3 +82,4 @@ common_site_config.json
 .env.*
 !.env.example
 .DS_Store
+.code-intel/
