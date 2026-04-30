@@ -10,9 +10,13 @@ import sys
 from typing import Any
 
 try:
-    from scripts.code_intel_common import json_dumps, resolve_codebase_root
+    from scripts.code_intel_common import (
+        estimate_practical_agent_tokens,
+        json_dumps,
+        resolve_codebase_root,
+    )
 except ModuleNotFoundError:
-    from code_intel_common import json_dumps, resolve_codebase_root
+    from code_intel_common import estimate_practical_agent_tokens, json_dumps, resolve_codebase_root
 
 
 def usage_log_path(codebase: str | None = None) -> Path:
@@ -38,9 +42,18 @@ def read_records(path: Path, limit: int | None = None) -> list[dict[str, Any]]:
 
 
 def summarize(records: list[dict[str, Any]], path: Path) -> dict[str, Any]:
-    total_output_tokens = sum(int(row.get("output_estimated_tokens") or 0) for row in records)
-    total_without_mcp = sum(int(row.get("without_mcp_estimated_tokens") or 0) for row in records)
-    total_saved = max(total_without_mcp - total_output_tokens, 0)
+    total_output_tokens = sum(int(row.get("mcp_output_estimated_tokens") or row.get("output_estimated_tokens") or 0) for row in records)
+    total_full_codebase = sum(int(row.get("full_codebase_baseline_tokens") or row.get("without_mcp_estimated_tokens") or 0) for row in records)
+    total_practical = 0
+    for row in records:
+        output_tokens = int(row.get("mcp_output_estimated_tokens") or row.get("output_estimated_tokens") or 0)
+        full_tokens = int(row.get("full_codebase_baseline_tokens") or row.get("without_mcp_estimated_tokens") or 0)
+        total_practical += int(
+            row.get("practical_agent_baseline_estimated_tokens")
+            or estimate_practical_agent_tokens(row.get("tool_name") or "unknown", output_tokens, full_tokens)
+        )
+    total_max_saved = max(total_full_codebase - total_output_tokens, 0)
+    total_practical_saved = max(total_practical - total_output_tokens, 0)
     total_ms = sum(float((row.get("timings_ms") or {}).get("total_ms") or 0) for row in records)
 
     by_tool: dict[str, dict[str, Any]] = {}
@@ -51,34 +64,56 @@ def summarize(records: list[dict[str, Any]], path: Path) -> dict[str, Any]:
             phase_totals_ms[phase] = round(phase_totals_ms.get(phase, 0.0) + float(duration or 0), 2)
 
         tool_name = row.get("tool_name") or "unknown"
+        output_tokens = int(row.get("mcp_output_estimated_tokens") or row.get("output_estimated_tokens") or 0)
+        full_tokens = int(row.get("full_codebase_baseline_tokens") or row.get("without_mcp_estimated_tokens") or 0)
+        practical_tokens = int(
+            row.get("practical_agent_baseline_estimated_tokens")
+            or estimate_practical_agent_tokens(tool_name, output_tokens, full_tokens)
+        )
         bucket = by_tool.setdefault(
             tool_name,
             {
                 "calls": 0,
-                "output_estimated_tokens": 0,
-                "without_mcp_estimated_tokens": 0,
-                "estimated_tokens_saved": 0,
+                "mcp_output_estimated_tokens": 0,
+                "full_codebase_baseline_tokens": 0,
+                "practical_agent_baseline_estimated_tokens": 0,
+                "max_context_tokens_avoided": 0,
+                "practical_estimated_tokens_saved": 0,
                 "total_ms": 0.0,
             },
         )
         bucket["calls"] += 1
-        bucket["output_estimated_tokens"] += int(row.get("output_estimated_tokens") or 0)
-        bucket["without_mcp_estimated_tokens"] += int(row.get("without_mcp_estimated_tokens") or 0)
-        bucket["estimated_tokens_saved"] += int(row.get("estimated_tokens_saved") or 0)
+        bucket["mcp_output_estimated_tokens"] += output_tokens
+        bucket["full_codebase_baseline_tokens"] += full_tokens
+        bucket["practical_agent_baseline_estimated_tokens"] += practical_tokens
+        bucket["max_context_tokens_avoided"] += max(full_tokens - output_tokens, 0)
+        bucket["practical_estimated_tokens_saved"] += max(practical_tokens - output_tokens, 0)
         bucket["total_ms"] = round(bucket["total_ms"] + float(timings.get("total_ms") or 0), 2)
 
     return {
         "usage_log": str(path),
         "records": len(records),
+        "mcp_output_estimated_tokens": total_output_tokens,
+        "full_codebase_baseline_tokens": total_full_codebase,
+        "practical_agent_baseline_estimated_tokens": total_practical,
+        "max_context_tokens_avoided": total_max_saved,
+        "practical_estimated_tokens_saved": total_practical_saved,
+        "max_context_savings_percent": round((total_max_saved / total_full_codebase * 100), 2) if total_full_codebase else 0.0,
+        "practical_savings_percent": round((total_practical_saved / total_practical * 100), 2) if total_practical else 0.0,
+        # Backward-compatible aliases.
         "output_estimated_tokens": total_output_tokens,
-        "without_mcp_estimated_tokens": total_without_mcp,
-        "estimated_tokens_saved": total_saved,
-        "estimated_savings_percent": round((total_saved / total_without_mcp * 100), 2) if total_without_mcp else 0.0,
+        "without_mcp_estimated_tokens": total_full_codebase,
+        "estimated_tokens_saved": total_max_saved,
+        "estimated_savings_percent": round((total_max_saved / total_full_codebase * 100), 2) if total_full_codebase else 0.0,
         "total_duration_ms": round(total_ms, 2),
         "total_duration_seconds": round(total_ms / 1000, 2),
         "phase_totals_ms": phase_totals_ms,
         "by_tool": by_tool,
-        "note": "Token counts are heuristic estimates for MCP output vs loading all supported source files.",
+        "note": (
+            "Token counts are heuristic estimates. full_codebase_baseline_tokens is a theoretical "
+            "upper baseline; practical_agent_baseline_estimated_tokens is the more realistic "
+            "Codex/Cursor-style comparison."
+        ),
     }
 
 

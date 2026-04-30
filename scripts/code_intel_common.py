@@ -358,6 +358,46 @@ def estimate_tokens(text: str) -> int:
     return len(TOKEN_RE.findall(text))
 
 
+PRACTICAL_AGENT_BASELINE_TOKENS = {
+    "search_code": 12000,
+    "get_file": 6000,
+    "get_function": 10000,
+    "code_index_status": 2000,
+    "estimate_context_savings": 15000,
+    "mcp_usage_summary": 2000,
+    "project_cleanup_context": 25000,
+}
+
+PRACTICAL_AGENT_CONTEXT_MULTIPLIER = {
+    "search_code": 6,
+    "get_file": 2,
+    "get_function": 4,
+    "code_index_status": 2,
+    "estimate_context_savings": 3,
+    "mcp_usage_summary": 2,
+    "project_cleanup_context": 3,
+}
+
+
+def estimate_practical_agent_tokens(
+    tool_name: str,
+    output_tokens: int,
+    full_codebase_tokens: int,
+) -> int:
+    """Estimate a realistic non-MCP agent context budget for one tool call.
+
+    This is intentionally a heuristic. The full-codebase token count is a hard
+    upper baseline, but normal agents usually inspect search results, nearby
+    files, and supporting context rather than loading every supported source
+    file. This estimate gives telemetry a more honest comparison point.
+    """
+
+    base = PRACTICAL_AGENT_BASELINE_TOKENS.get(tool_name, 8000)
+    multiplier = PRACTICAL_AGENT_CONTEXT_MULTIPLIER.get(tool_name, 3)
+    estimate = max(output_tokens, base, output_tokens * multiplier)
+    return min(estimate, full_codebase_tokens) if full_codebase_tokens else estimate
+
+
 def estimate_codebase_tokens(root: Path) -> dict[str, int]:
     files = 0
     characters = 0

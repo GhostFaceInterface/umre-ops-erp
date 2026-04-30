@@ -5,6 +5,7 @@ load_dotenv()
 
 import json
 from pathlib import Path
+import subprocess
 import time
 from typing import Any
 from uuid import uuid4
@@ -17,6 +18,7 @@ try:
         DEFAULT_MATCH_COUNT,
         active_model_name,
         estimate_codebase_tokens,
+        estimate_practical_agent_tokens,
         estimate_tokens,
         get_supabase_client,
         normalize_snippet,
@@ -31,6 +33,7 @@ except ModuleNotFoundError:
         DEFAULT_MATCH_COUNT,
         active_model_name,
         estimate_codebase_tokens,
+        estimate_practical_agent_tokens,
         estimate_tokens,
         get_supabase_client,
         normalize_snippet,
@@ -87,8 +90,13 @@ def _record_usage(
     baseline, baseline_ms = _baseline_context()
     output_tokens = _json_size_tokens(output)
     baseline_tokens = baseline.get("estimated_tokens") or 0
-    saved_tokens = max(baseline_tokens - output_tokens, 0)
-    savings_percent = round((saved_tokens / baseline_tokens * 100), 2) if baseline_tokens else 0.0
+    practical_tokens = estimate_practical_agent_tokens(tool_name, output_tokens, baseline_tokens)
+    max_saved_tokens = max(baseline_tokens - output_tokens, 0)
+    practical_saved_tokens = max(practical_tokens - output_tokens, 0)
+    max_savings_percent = round((max_saved_tokens / baseline_tokens * 100), 2) if baseline_tokens else 0.0
+    practical_savings_percent = (
+        round((practical_saved_tokens / practical_tokens * 100), 2) if practical_tokens else 0.0
+    )
     timings_ms = {**timings_ms, "baseline_estimate_ms": round(baseline_ms, 2)}
     total_ms = _now_ms() - started_ms
     timings_ms["total_ms"] = round(total_ms, 2)
@@ -100,10 +108,18 @@ def _record_usage(
         "model_name": active_model_name(),
         "tool_name": tool_name,
         "args": args,
+        "mcp_output_estimated_tokens": output_tokens,
+        "full_codebase_baseline_tokens": baseline_tokens,
+        "practical_agent_baseline_estimated_tokens": practical_tokens,
+        "max_context_tokens_avoided": max_saved_tokens,
+        "practical_estimated_tokens_saved": practical_saved_tokens,
+        "max_context_savings_percent": max_savings_percent,
+        "practical_savings_percent": practical_savings_percent,
+        # Backward-compatible aliases kept for older scripts/log consumers.
         "output_estimated_tokens": output_tokens,
         "without_mcp_estimated_tokens": baseline_tokens,
-        "estimated_tokens_saved": saved_tokens,
-        "estimated_savings_percent": savings_percent,
+        "estimated_tokens_saved": max_saved_tokens,
+        "estimated_savings_percent": max_savings_percent,
         "full_codebase_files": baseline.get("files"),
         "full_codebase_characters": baseline.get("characters"),
         "timings_ms": timings_ms,
@@ -142,42 +158,146 @@ def _read_usage_records(limit: int | None = None) -> list[dict[str, Any]]:
     return records
 
 
+def _git_tracked_files(root: Path) -> list[str]:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "ls-files"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except Exception:
+        return []
+    return [line for line in result.stdout.splitlines() if line.strip()]
+
+
+def _cleanup_context() -> dict[str, Any]:
+    root = _codebase_root()
+    tracked_files = _git_tracked_files(root)
+    duplicate_prefixes = [
+        "umre_ops/umre_ops/umre_ops/",
+        "umre_ops/umre_ops/umre_ops/umre_ops/",
+        "umre_ops/umre_ops/umre_ops/umre_ops/umre_ops/",
+    ]
+    duplicate_counts = {
+        prefix.rstrip("/"): sum(1 for path in tracked_files if path.startswith(prefix))
+        for prefix in duplicate_prefixes
+    }
+    repeated_framework_files = [
+        path
+        for path in tracked_files
+        if path.endswith(("/hooks.py", "/modules.txt"))
+        and path.count("umre_ops/") >= 2
+    ]
+    duplicate_total = sum(duplicate_counts.values())
+    audit_path = root / "docs" / "project_cleanup_audit.md"
+    audit_summary = ""
+    if audit_path.exists():
+        audit_summary = read_text(audit_path)[:12000]
+
+    return {
+        "project": "umre_ops",
+        "codebase_root": str(root),
+        "tracked_files": len(tracked_files),
+        "canonical_runtime_imports": {
+            "app_package": "umre_ops",
+            "hooks_module": "umre_ops.hooks",
+            "business_services": "umre_ops.umre_ops.services.*",
+            "known_dead_probe": "umre_ops.umre_ops.umre_ops.services.expense_service did not import in bench validation",
+        },
+        "duplicate_tree_counts": duplicate_counts,
+        "repeated_framework_files": repeated_framework_files,
+        "cleanup_rule": (
+            "No deeper tracked umre_ops/umre_ops/umre_ops/** files remain. Investigate any "
+            "remaining candidates separately with runtime import proof before deletion."
+            if duplicate_total == 0
+            else (
+                "Treat umre_ops/umre_ops/umre_ops/** and deeper trees as high-risk cleanup "
+                "candidates. Delete only after baseline bench/import checks pass, then re-run "
+                "migrate/build/import checks and re-index Supabase."
+            )
+        ),
+        "recommended_validation_commands": [
+            "docker exec devcontainer-frappe-1 bash -lc 'cd /workspace/development/frappe-bench && env/bin/python -c \"import umre_ops, umre_ops.hooks, umre_ops.umre_ops.services.expense_service as e; print(umre_ops.__file__); print(umre_ops.hooks.__file__); print(e.__file__)\"'",
+            "docker exec devcontainer-frappe-1 bash -lc 'cd /workspace/development/frappe-bench && bench --site development.localhost migrate'",
+            "docker exec devcontainer-frappe-1 bash -lc 'cd /workspace/development/frappe-bench && bench build --app umre_ops'",
+        ],
+        "audit_document": "docs/project_cleanup_audit.md",
+        "audit_summary": audit_summary,
+    }
+
+
 def _usage_summary(limit: int | None = None) -> dict[str, Any]:
     records = _read_usage_records(limit)
-    total_output_tokens = sum(int(row.get("output_estimated_tokens") or 0) for row in records)
-    total_without_mcp = sum(int(row.get("without_mcp_estimated_tokens") or 0) for row in records)
-    total_saved = max(total_without_mcp - total_output_tokens, 0)
+    total_output_tokens = sum(int(row.get("mcp_output_estimated_tokens") or row.get("output_estimated_tokens") or 0) for row in records)
+    total_full_codebase = sum(int(row.get("full_codebase_baseline_tokens") or row.get("without_mcp_estimated_tokens") or 0) for row in records)
+    total_practical = sum(
+        int(
+            row.get("practical_agent_baseline_estimated_tokens")
+            or estimate_practical_agent_tokens(
+                row.get("tool_name") or "unknown",
+                int(row.get("output_estimated_tokens") or 0),
+                int(row.get("without_mcp_estimated_tokens") or 0),
+            )
+        )
+        for row in records
+    )
+    total_max_saved = max(total_full_codebase - total_output_tokens, 0)
+    total_practical_saved = max(total_practical - total_output_tokens, 0)
     total_ms = sum(float((row.get("timings_ms") or {}).get("total_ms") or 0) for row in records)
     by_tool: dict[str, dict[str, Any]] = {}
     for row in records:
         tool_name = row.get("tool_name") or "unknown"
+        output_tokens = int(row.get("mcp_output_estimated_tokens") or row.get("output_estimated_tokens") or 0)
+        full_tokens = int(row.get("full_codebase_baseline_tokens") or row.get("without_mcp_estimated_tokens") or 0)
+        practical_tokens = int(
+            row.get("practical_agent_baseline_estimated_tokens")
+            or estimate_practical_agent_tokens(tool_name, output_tokens, full_tokens)
+        )
         bucket = by_tool.setdefault(
             tool_name,
             {
                 "calls": 0,
-                "output_estimated_tokens": 0,
-                "without_mcp_estimated_tokens": 0,
-                "estimated_tokens_saved": 0,
+                "mcp_output_estimated_tokens": 0,
+                "full_codebase_baseline_tokens": 0,
+                "practical_agent_baseline_estimated_tokens": 0,
+                "max_context_tokens_avoided": 0,
+                "practical_estimated_tokens_saved": 0,
                 "total_ms": 0.0,
             },
         )
         bucket["calls"] += 1
-        bucket["output_estimated_tokens"] += int(row.get("output_estimated_tokens") or 0)
-        bucket["without_mcp_estimated_tokens"] += int(row.get("without_mcp_estimated_tokens") or 0)
-        bucket["estimated_tokens_saved"] += int(row.get("estimated_tokens_saved") or 0)
+        bucket["mcp_output_estimated_tokens"] += output_tokens
+        bucket["full_codebase_baseline_tokens"] += full_tokens
+        bucket["practical_agent_baseline_estimated_tokens"] += practical_tokens
+        bucket["max_context_tokens_avoided"] += max(full_tokens - output_tokens, 0)
+        bucket["practical_estimated_tokens_saved"] += max(practical_tokens - output_tokens, 0)
         bucket["total_ms"] = round(bucket["total_ms"] + float((row.get("timings_ms") or {}).get("total_ms") or 0), 2)
 
     return {
         "usage_log": str(_usage_log_path()),
         "records": len(records),
+        "mcp_output_estimated_tokens": total_output_tokens,
+        "full_codebase_baseline_tokens": total_full_codebase,
+        "practical_agent_baseline_estimated_tokens": total_practical,
+        "max_context_tokens_avoided": total_max_saved,
+        "practical_estimated_tokens_saved": total_practical_saved,
+        "max_context_savings_percent": round((total_max_saved / total_full_codebase * 100), 2) if total_full_codebase else 0.0,
+        "practical_savings_percent": round((total_practical_saved / total_practical * 100), 2) if total_practical else 0.0,
+        # Backward-compatible aliases.
         "output_estimated_tokens": total_output_tokens,
-        "without_mcp_estimated_tokens": total_without_mcp,
-        "estimated_tokens_saved": total_saved,
-        "estimated_savings_percent": round((total_saved / total_without_mcp * 100), 2) if total_without_mcp else 0.0,
+        "without_mcp_estimated_tokens": total_full_codebase,
+        "estimated_tokens_saved": total_max_saved,
+        "estimated_savings_percent": round((total_max_saved / total_full_codebase * 100), 2) if total_full_codebase else 0.0,
         "total_duration_ms": round(total_ms, 2),
         "total_duration_seconds": round(total_ms / 1000, 2),
         "by_tool": by_tool,
-        "note": "Token counts are heuristic estimates for MCP output vs loading all supported source files.",
+        "note": (
+            "Token counts are heuristic estimates. full_codebase_baseline_tokens is a theoretical "
+            "upper baseline; practical_agent_baseline_estimated_tokens is the more realistic "
+            "Codex/Cursor-style comparison."
+        ),
     }
 
 
@@ -336,8 +456,13 @@ def estimate_context_savings(query: str, limit: int = DEFAULT_MATCH_COUNT) -> di
         retrieved_tokens = estimate_tokens(retrieved_text)
         full_context, _ = _baseline_context()
         full_tokens = full_context["estimated_tokens"]
-        saved_tokens = max(full_tokens - retrieved_tokens, 0)
-        savings_percent = round((saved_tokens / full_tokens * 100), 2) if full_tokens else 0.0
+        practical_tokens = estimate_practical_agent_tokens(
+            "search_code",
+            retrieved_tokens,
+            full_tokens,
+        )
+        max_saved_tokens = max(full_tokens - retrieved_tokens, 0)
+        practical_saved_tokens = max(practical_tokens - retrieved_tokens, 0)
 
         return {
             "query": query,
@@ -346,10 +471,24 @@ def estimate_context_savings(query: str, limit: int = DEFAULT_MATCH_COUNT) -> di
             "retrieved_estimated_tokens": retrieved_tokens,
             "full_codebase_files": full_context["files"],
             "full_codebase_characters": full_context["characters"],
+            "full_codebase_baseline_tokens": full_tokens,
+            "practical_agent_baseline_estimated_tokens": practical_tokens,
+            "max_context_tokens_avoided": max_saved_tokens,
+            "practical_estimated_tokens_saved": practical_saved_tokens,
+            "max_context_savings_percent": round((max_saved_tokens / full_tokens * 100), 2) if full_tokens else 0.0,
+            "practical_savings_percent": (
+                round((practical_saved_tokens / practical_tokens * 100), 2)
+                if practical_tokens
+                else 0.0
+            ),
+            # Backward-compatible aliases.
             "full_codebase_estimated_tokens": full_tokens,
-            "estimated_tokens_saved": saved_tokens,
-            "estimated_savings_percent": savings_percent,
-            "note": "Token counts are heuristic estimates based on the project tokenizer approximation.",
+            "estimated_tokens_saved": max_saved_tokens,
+            "estimated_savings_percent": round((max_saved_tokens / full_tokens * 100), 2) if full_tokens else 0.0,
+            "note": (
+                "Token counts are heuristic. full_codebase_baseline_tokens is an upper baseline; "
+                "practical_agent_baseline_estimated_tokens is a more realistic agent comparison."
+            ),
         }
 
     return _with_usage("estimate_context_savings", {"query": query, "limit": bounded_limit}, work)
@@ -361,6 +500,17 @@ def mcp_usage_summary(limit: int = 100) -> dict[str, Any]:
 
     bounded_limit = max(1, min(limit, 10000))
     return _usage_summary(bounded_limit)
+
+
+@mcp.tool()
+def project_cleanup_context() -> dict[str, Any]:
+    """Return compact cleanup audit context for agents before repo cleanup.
+
+    Use this before cleanup work so the agent does not rediscover the same
+    duplicate-tree facts through broad codebase reads.
+    """
+
+    return _with_usage("project_cleanup_context", {}, _cleanup_context)
 
 
 def main() -> None:

@@ -7,7 +7,8 @@ This document tracks cleanup candidates for the `umre_ops` app. It is intentiona
 ## Current State
 
 - Git branch: `version-16`
-- Tracked files: 489
+- Tracked files before first cleanup: 491
+- Tracked files after first cleanup: 203
 - AI code intelligence infrastructure is committed and pushed in `f285494`.
 - Codex MCP config has been added to `/Users/boe747/.codex/config.toml`.
 - Cursor MCP config is tracked at `.cursor/mcp.json`.
@@ -23,24 +24,44 @@ These are generated runtime/cache artifacts and are not tracked by Git:
 
 Cleanup rule: safe to remove locally when needed, but they do not need a Git commit.
 
-## High-Risk Cleanup Candidates
+## Completed Cleanup
 
-The repository contains repeated tracked package trees under nested `umre_ops` paths:
+Validated and removed the dead nested tree:
 
-- `umre_ops/umre_ops/umre_ops/**`: 288 tracked files
-- `umre_ops/umre_ops/umre_ops/umre_ops/**`: 223 tracked files
+- `umre_ops/umre_ops/umre_ops/**`: removed 288 tracked duplicate files.
 
-Repeated framework files also exist at multiple depths:
+Validation evidence:
+
+- Runtime import path inside the bench resolves to:
+  - app package: `/workspace/development/frappe-bench/apps/umre_ops/umre_ops/__init__.py`
+  - hooks: `/workspace/development/frappe-bench/apps/umre_ops/umre_ops/hooks.py`
+  - service: `/workspace/development/frappe-bench/apps/umre_ops/umre_ops/umre_ops/services/expense_service.py`
+- Canonical business service import works:
+  - `umre_ops.umre_ops.services.expense_service`
+- Dead duplicate service import fails as expected:
+  - `umre_ops.umre_ops.umre_ops.services.expense_service`
+- `bench --site development.localhost migrate` passed.
+- `bench build --app umre_ops` passed.
+- `expense_service.get_operational_expense_taxonomy` passed.
+- `dashboard_service.get_tour_cost_breakdown` passed.
+- Supabase index sync after cleanup:
+  - files processed: 176
+  - chunks: 638
+  - stale rows deleted: 127
+  - rows inserted: 96
+  - active DB rows: 550
+  - immediate no-change rerun inserted: 0
+
+## Remaining Cleanup Candidates
+
+Remaining repeated framework-looking files:
 
 - `umre_ops/umre_ops/hooks.py`
-- `umre_ops/umre_ops/umre_ops/hooks.py`
-- `umre_ops/umre_ops/umre_ops/umre_ops/hooks.py`
-- `umre_ops/umre_ops/umre_ops/umre_ops/umre_ops/hooks.py`
-- `umre_ops/umre_ops/umre_ops/umre_ops/umre_ops/umre_ops/hooks.py`
+- `umre_ops/umre_ops/modules.txt`
 
-And matching repeated `modules.txt` files at the same depths.
+These are now inside the active business package path and should not be removed in the same cleanup pass. Investigate separately, because `umre_ops.umre_ops.*` is the active service/import namespace.
 
-Do not delete these yet. Some may be accidental copies, but deleting nested Frappe files without proving the active import path can break hooks, DocTypes, patches, or service imports.
+No deeper tracked `umre_ops/umre_ops/umre_ops/**` files remain.
 
 ## Cleanup Procedure
 
@@ -57,4 +78,4 @@ Do not delete these yet. Some may be accidental copies, but deleting nested Frap
 
 ## Current Decision
 
-No tracked cleanup deletions are approved yet. The next cleanup step should be a read-only duplicate/import-path investigation, then a small quarantine branch commit only after validation.
+First tracked cleanup deletion has been validated. Continue only with small, separately validated cleanup commits.
