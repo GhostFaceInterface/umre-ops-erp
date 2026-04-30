@@ -66,6 +66,15 @@ python scripts/index_codebase.py
 python scripts/search.py "dashboard logic"
 ```
 
+`index_codebase.py` is incremental by default. On each run it compares indexed
+`metadata.file_path` + `content_hash` against the current working tree, deletes
+stale chunks for changed/removed files, and inserts only the chunks that still
+need indexing. To fall back to append-only hash deduplication:
+
+```bash
+python scripts/index_codebase.py --no-incremental
+```
+
 The HTTP server is only for direct local debugging with curl/browser:
 
 ```bash

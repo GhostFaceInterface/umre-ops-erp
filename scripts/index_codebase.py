@@ -20,16 +20,19 @@ try:
         configure_logging,
         count_code_rows,
         create_index_run,
+        delete_chunks_for_paths,
         detect_embedding_dimension,
         encode_query,
         encode_texts,
         embedding_sample_exists,
         fetch_existing_hashes,
+        fetch_indexed_file_state,
         finish_index_run,
         get_embedding_model,
         get_supabase_client,
         initialize_database_schema,
         insert_rows_with_retry,
+        iter_source_files,
         json_dumps,
         reset_schema_sql,
         resolve_codebase_root,
@@ -49,16 +52,19 @@ except ModuleNotFoundError:
         configure_logging,
         count_code_rows,
         create_index_run,
+        delete_chunks_for_paths,
         detect_embedding_dimension,
         encode_query,
         encode_texts,
         embedding_sample_exists,
         fetch_existing_hashes,
+        fetch_indexed_file_state,
         finish_index_run,
         get_embedding_model,
         get_supabase_client,
         initialize_database_schema,
         insert_rows_with_retry,
+        iter_source_files,
         json_dumps,
         reset_schema_sql,
         resolve_codebase_root,
@@ -75,6 +81,7 @@ def index_codebase(
     embedding_batch_size: int,
     init_db: bool,
     print_sql: bool,
+    incremental: bool,
     test_query: str | None,
 ) -> dict[str, Any]:
     LOGGER.info("Loading embedding model: %s", active_model_name())
@@ -94,6 +101,7 @@ def index_codebase(
 
     try:
         LOGGER.info("Scanning codebase: %s", codebase_root)
+        current_file_paths = {str(path.relative_to(codebase_root)) for path in iter_source_files(codebase_root)}
         files_processed, chunks = scan_codebase(codebase_root)
         LOGGER.info("Scan complete: %s files processed, %s chunks produced", files_processed, len(chunks))
 
@@ -109,9 +117,53 @@ def index_codebase(
         if duplicate_in_scan:
             LOGGER.info("Skipped %s duplicate chunks within this scan", duplicate_in_scan)
 
+        deleted_rows = 0
+        unchanged_files = 0
+        changed_files = 0
+        stale_files = 0
+        if incremental:
+            chunks_by_file: dict[str, list[Any]] = {}
+            for chunk in unique_chunks:
+                chunks_by_file.setdefault(chunk.metadata["file_path"], []).append(chunk)
+
+            indexed_state = fetch_indexed_file_state(supabase)
+            stale_paths = sorted(set(indexed_state) - current_file_paths)
+            changed_paths: list[str] = []
+            chunks_to_consider = []
+
+            for file_path in sorted(current_file_paths):
+                current_chunks = chunks_by_file.get(file_path, [])
+                current_hashes = {chunk.content_hash for chunk in current_chunks}
+                indexed_hashes = indexed_state.get(file_path)
+                if indexed_hashes is not None and indexed_hashes == current_hashes:
+                    unchanged_files += 1
+                    continue
+                if indexed_hashes is not None:
+                    changed_paths.append(file_path)
+                    changed_files += 1
+                chunks_to_consider.extend(current_chunks)
+
+            delete_paths = stale_paths + changed_paths
+            stale_files = len(stale_paths)
+            if delete_paths:
+                deleted_rows = delete_chunks_for_paths(supabase, delete_paths)
+                LOGGER.info(
+                    "Incremental cleanup: %s stale files, %s changed files, %s rows deleted",
+                    stale_files,
+                    changed_files,
+                    deleted_rows,
+                )
+            LOGGER.info(
+                "Incremental plan: %s unchanged files, %s files needing indexing",
+                unchanged_files,
+                len(current_file_paths) - unchanged_files,
+            )
+        else:
+            chunks_to_consider = unique_chunks
+
         skipped_existing = 0
         chunks_to_index = []
-        for chunk_batch in batches(unique_chunks, batch_size):
+        for chunk_batch in batches(chunks_to_consider, batch_size):
             existing_hashes = fetch_existing_hashes(supabase, [chunk.content_hash for chunk in chunk_batch])
             new_chunks = [chunk for chunk in chunk_batch if chunk.content_hash not in existing_hashes]
             skipped_existing += len(chunk_batch) - len(new_chunks)
@@ -120,8 +172,8 @@ def index_codebase(
         inserted_rows = 0
         total_to_insert = len(chunks_to_index)
         LOGGER.info(
-            "Index plan: %s unique chunks, %s already indexed, %s to insert",
-            len(unique_chunks),
+            "Index plan: %s candidate chunks, %s already indexed, %s to insert",
+            len(chunks_to_consider),
             skipped_existing,
             total_to_insert,
         )
@@ -187,6 +239,10 @@ def index_codebase(
         "unique_chunks": len(unique_chunks),
         "inserted_rows": inserted_rows,
         "skipped_existing_rows": skipped_existing,
+        "deleted_rows": deleted_rows,
+        "unchanged_files": unchanged_files,
+        "changed_files": changed_files,
+        "stale_files": stale_files,
         "db_rows": db_rows,
         "embedding_sample_present": embedding_sample_exists(supabase),
         "model_name": active_model_name(),
@@ -224,6 +280,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-size", type=int, default=100, help="Chunk batch size for deduplication.")
     parser.add_argument("--embedding-batch-size", type=int, default=16, help="Embedding model batch size.")
     parser.add_argument("--init-db", action="store_true", help="Create pgvector table, index, and match function.")
+    parser.add_argument(
+        "--no-incremental",
+        action="store_true",
+        help="Disable changed/deleted file cleanup and keep append-only hash deduplication behavior.",
+    )
     parser.add_argument("--print-sql", action="store_true", help="Print the schema SQL for Supabase SQL Editor.")
     parser.add_argument(
         "--print-reset-sql",
@@ -274,6 +335,7 @@ def main() -> int:
             embedding_batch_size=args.embedding_batch_size,
             init_db=args.init_db,
             print_sql=args.print_sql,
+            incremental=not args.no_incremental,
             test_query=args.test_query or None,
         )
     except Exception as exc:

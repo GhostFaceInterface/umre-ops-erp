@@ -809,6 +809,52 @@ def fetch_existing_hashes(supabase: Any, hashes: list[str]) -> set[str]:
     return existing
 
 
+def fetch_indexed_file_state(supabase: Any) -> dict[str, set[str]]:
+    state: dict[str, set[str]] = {}
+    page_size = 1000
+    offset = 0
+
+    while True:
+        response = (
+            supabase.table("code_chunks")
+            .select("content_hash,metadata")
+            .contains("metadata", {"project": PROJECT_NAME})
+            .eq("model_name", MODEL_NAME)
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        rows = response_data(response)
+        if not rows:
+            break
+
+        for row in rows:
+            metadata = row.get("metadata") or {}
+            file_path = metadata.get("file_path")
+            content_hash_value = row.get("content_hash")
+            if file_path and content_hash_value:
+                state.setdefault(file_path, set()).add(content_hash_value)
+
+        if len(rows) < page_size:
+            break
+        offset += page_size
+
+    return state
+
+
+def delete_chunks_for_paths(supabase: Any, file_paths: list[str]) -> int:
+    deleted_rows = 0
+    for file_path in sorted(set(file_paths)):
+        response = (
+            supabase.table("code_chunks")
+            .delete()
+            .eq("model_name", MODEL_NAME)
+            .contains("metadata", {"project": PROJECT_NAME, "file_path": file_path})
+            .execute()
+        )
+        deleted_rows += len(response_data(response))
+    return deleted_rows
+
+
 def insert_rows_with_retry(
     supabase: Any,
     rows: list[dict[str, Any]],
