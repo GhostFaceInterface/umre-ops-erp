@@ -13,6 +13,7 @@ from umre_ops.umre_ops.services.season_service import apply_active_season
 
 class OperationalExpense(Document):
 	def on_update(self):
+		self._link_receipt_attachment()
 		frappe.publish_realtime(event="umre_operational_expense_dirty", message={"name": self.name}, after_commit=True)
 
 	def validate(self):
@@ -91,3 +92,30 @@ class OperationalExpense(Document):
 		path = self.receipt_attachment.split("?", 1)[0].lower()
 		if not any(path.endswith(ext) for ext in allowed):
 			frappe.throw(_("Dekont eki yalnızca PDF veya resim olabilir: pdf, jpg, jpeg, png, webp."))
+
+	def _link_receipt_attachment(self) -> None:
+		if not self.receipt_attachment:
+			return
+
+		file_row = frappe.db.get_value(
+			"File",
+			{"file_url": self.receipt_attachment},
+			["name", "attached_to_doctype", "attached_to_name"],
+			as_dict=True,
+		)
+		if not file_row:
+			return
+
+		if file_row.attached_to_doctype and file_row.attached_to_name != self.name:
+			return
+
+		frappe.db.set_value(
+			"File",
+			file_row.name,
+			{
+				"attached_to_doctype": self.doctype,
+				"attached_to_name": self.name,
+				"attached_to_field": "receipt_attachment",
+			},
+			update_modified=False,
+		)

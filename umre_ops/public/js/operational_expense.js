@@ -20,9 +20,6 @@ frappe.ui.form.on("Operational Expense", {
 	money_account(frm) {
 		preview_usd(frm);
 	},
-	receipt_attachment(frm) {
-		prevent_unsaved_receipt_upload(frm);
-	},
 	refresh(frm) {
 		default_active_season(frm);
 		preview_usd(frm);
@@ -56,27 +53,49 @@ function preview_usd(frm) {
 }
 
 function configure_receipt_attachment(frm) {
-	const is_new = frm.is_new();
-	frm.set_df_property("receipt_attachment", "read_only", is_new ? 1 : 0);
 	frm.set_df_property(
 		"receipt_attachment",
 		"description",
-		is_new
-			? __("Dekont yüklemek için önce gider formunu kaydedin. Aksi halde Frappe eki bağlamak için formu otomatik kaydeder.")
-			: __("PDF veya resim dosyası yükleyin: pdf, jpg, jpeg, png, webp.")
+		__("PDF veya resim dosyası yükleyin: pdf, jpg, jpeg, png, webp.")
 	);
-}
 
-function prevent_unsaved_receipt_upload(frm) {
-	if (!frm.is_new() || !frm.doc.receipt_attachment) return;
-	const attachment = frm.doc.receipt_attachment;
-	frm.set_value("receipt_attachment", "");
-	frappe.msgprint({
-		title: __("Dekont daha sonra yüklenmeli"),
-		message: __(
-			"{0} dosyası forma bağlanmadı. Önce gider kaydını kaydedin, ardından dekontu yükleyin.",
-			[frappe.utils.escape_html(attachment)]
-		),
-		indicator: "orange",
-	});
+	const control = frm.fields_dict.receipt_attachment;
+	if (!control || control._umre_receipt_upload_patched) return;
+	control._umre_receipt_upload_patched = true;
+
+	control.on_attach_click = function () {
+		this.set_upload_options();
+		this.upload_options.doctype = null;
+		this.upload_options.docname = null;
+		this.upload_options.fieldname = null;
+		this.upload_options.make_attachments_public = 0;
+		this.upload_options.restrictions = {
+			...(this.upload_options.restrictions || {}),
+			allowed_file_types: [".pdf", ".jpg", ".jpeg", ".png", ".webp"],
+		};
+		this.file_uploader = new frappe.ui.FileUploader(this.upload_options);
+	};
+
+	control.on_upload_complete = async function (attachment) {
+		await this.parse_validate_and_set_in_model(attachment.file_url);
+		this.set_value(attachment.file_url);
+		this.refresh();
+		this.toggle_reload_button();
+
+		if (this.frm) {
+			this.frm.dirty();
+		}
+	};
+
+	control.clear_attachment = function () {
+		frappe.confirm(__("Are you sure you want to delete the attachment?"), async () => {
+			await this.parse_validate_and_set_in_model(null);
+			this.set_value(null);
+			this.refresh();
+
+			if (this.frm) {
+				this.frm.dirty();
+			}
+		});
+	};
 }
