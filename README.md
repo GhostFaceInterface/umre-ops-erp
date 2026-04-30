@@ -172,6 +172,7 @@ The MCP tools are:
 - `get_file(path, max_chars)`
 - `get_function(name, limit, max_chars)`
 - `code_index_status()`
+- `estimate_context_savings(query, limit)`
 
 Do not mix embeddings from different models in the same vector table. Changing `CODE_INTEL_MODEL_NAME` requires resetting the vector table and reindexing.
 

@@ -92,7 +92,10 @@ class GenelGiderGirisi {
 	render_group(group) {
 		return `
 			<div class="frappe-card p-4" style="border:1px solid #d5dae1;box-shadow:0 1px 2px rgba(15,23,42,0.04);background:#fff;">
-				<div class="h5 mb-3" style="line-height:1.25;text-transform:uppercase;letter-spacing:0;font-weight:700;">${frappe.utils.escape_html(this.group_title(group))}</div>
+				<div class="mb-3" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+					<div class="h5 mb-0" style="line-height:1.25;text-transform:uppercase;letter-spacing:0;font-weight:700;">${frappe.utils.escape_html(this.group_title(group))}</div>
+					${this.render_add_category_button(group, "btn-xs")}
+				</div>
 				${(group.children || []).map((child) => this.render_node(child)).join("")}
 			</div>
 		`;
@@ -128,7 +131,10 @@ class GenelGiderGirisi {
 	render_node(node) {
 		if (node.is_group) {
 			return `
-				<div class="mt-3 mb-2 text-muted text-uppercase small">${frappe.utils.escape_html(node.label || node.name)}</div>
+				<div class="mt-3 mb-2" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+					<div class="text-muted text-uppercase small">${frappe.utils.escape_html(node.label || node.name)}</div>
+					${this.render_add_category_button(node, "btn-xs")}
+				</div>
 				${(node.children || []).map((child) => this.render_node(child)).join("")}
 			`;
 		}
@@ -151,6 +157,23 @@ class GenelGiderGirisi {
 		`;
 	}
 
+	render_add_category_button(node, size_class) {
+		const label = node.label || node.name || "";
+		return `
+			<button
+				type="button"
+				class="btn ${size_class || "btn-xs"} btn-default"
+				data-add-expense-category-parent="${frappe.utils.escape_html(node.name)}"
+				title="${frappe.utils.escape_html(__("Yeni gider kalemi ekle") + ": " + label)}"
+				aria-label="${frappe.utils.escape_html(__("Yeni gider kalemi ekle") + ": " + label)}"
+				style="display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:6px;background:var(--control-bg);border:1px solid var(--border-color);color:var(--text-color);font-weight:500;white-space:nowrap;box-shadow:none;"
+			>
+				${this.add_icon()}
+				<span>${__("Kalem")}</span>
+			</button>
+		`;
+	}
+
 	add_icon() {
 		if (frappe.utils && typeof frappe.utils.icon === "function") {
 			return frappe.utils.icon("add", "xs");
@@ -166,6 +189,43 @@ class GenelGiderGirisi {
 			const category = $(event.currentTarget).attr("data-expense-category");
 			this.create_expense(category);
 		});
+		this.container.find("[data-add-expense-category-parent]").on("click", (event) => {
+			const parent = $(event.currentTarget).attr("data-add-expense-category-parent");
+			this.create_category(parent);
+		});
+	}
+
+	create_category(parent_category) {
+		frappe.prompt(
+			[
+				{
+					fieldname: "category_name",
+					fieldtype: "Data",
+					label: __("Gider Kalemi Adı"),
+					reqd: 1
+				}
+			],
+			(values) => {
+				frappe.call({
+					method: "umre_ops.umre_ops.services.expense_service.create_operational_expense_category",
+					args: {
+						parent_category,
+						category_name: values.category_name
+					},
+					freeze: true,
+					freeze_message: __("Gider kalemi ekleniyor...")
+				}).then((response) => {
+					const created = response.message || {};
+					frappe.show_alert({
+						message: __("Gider kalemi eklendi: {0}", [created.label || values.category_name]),
+						indicator: "green"
+					});
+					this.load();
+				});
+			},
+			__("Yeni Gider Kalemi"),
+			__("Ekle")
+		);
 	}
 
 	create_expense(category) {

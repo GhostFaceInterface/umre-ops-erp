@@ -12,6 +12,8 @@ try:
     from scripts.code_intel_common import (
         DEFAULT_MATCH_COUNT,
         active_model_name,
+        estimate_codebase_tokens,
+        estimate_tokens,
         get_supabase_client,
         normalize_snippet,
         read_text,
@@ -24,6 +26,8 @@ except ModuleNotFoundError:
     from code_intel_common import (
         DEFAULT_MATCH_COUNT,
         active_model_name,
+        estimate_codebase_tokens,
+        estimate_tokens,
         get_supabase_client,
         normalize_snippet,
         read_text,
@@ -163,6 +167,37 @@ def code_index_status() -> dict[str, Any]:
         "model_name": active_model_name(),
         "chunk_rows": getattr(count_response, "count", None),
         "latest_run": runs[0] if runs else None,
+    }
+
+
+@mcp.tool()
+def estimate_context_savings(query: str, limit: int = DEFAULT_MATCH_COUNT) -> dict[str, Any]:
+    """Estimate token savings from MCP retrieval vs loading the whole codebase.
+
+    This is an approximate diagnostic tool. It compares indexed semantic-search
+    snippets for a query against all supported source files in the codebase.
+    """
+
+    bounded_limit = max(1, min(limit, 20))
+    results = semantic_search(query, bounded_limit)
+    retrieved_text = "\n\n".join(result.get("snippet") or "" for result in results)
+    retrieved_tokens = estimate_tokens(retrieved_text)
+    full_context = estimate_codebase_tokens(_codebase_root())
+    full_tokens = full_context["estimated_tokens"]
+    saved_tokens = max(full_tokens - retrieved_tokens, 0)
+    savings_percent = round((saved_tokens / full_tokens * 100), 2) if full_tokens else 0.0
+
+    return {
+        "query": query,
+        "model_name": active_model_name(),
+        "retrieved_chunks": len(results),
+        "retrieved_estimated_tokens": retrieved_tokens,
+        "full_codebase_files": full_context["files"],
+        "full_codebase_characters": full_context["characters"],
+        "full_codebase_estimated_tokens": full_tokens,
+        "estimated_tokens_saved": saved_tokens,
+        "estimated_savings_percent": savings_percent,
+        "note": "Token counts are heuristic estimates based on the project tokenizer approximation.",
     }
 
 

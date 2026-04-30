@@ -358,6 +358,25 @@ def estimate_tokens(text: str) -> int:
     return len(TOKEN_RE.findall(text))
 
 
+def estimate_codebase_tokens(root: Path) -> dict[str, int]:
+    files = 0
+    characters = 0
+    estimated_tokens = 0
+    for path in iter_source_files(root):
+        try:
+            content = read_text(path)
+        except Exception:
+            continue
+        files += 1
+        characters += len(content)
+        estimated_tokens += estimate_tokens(content)
+    return {
+        "files": files,
+        "characters": characters,
+        "estimated_tokens": estimated_tokens,
+    }
+
+
 def content_hash(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 

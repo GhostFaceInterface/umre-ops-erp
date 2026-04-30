@@ -210,6 +210,61 @@ def get_operational_expense_taxonomy() -> list[dict[str, Any]]:
 	return [build(row) for row in by_parent.get(None, []) if row["name"] in by_name]
 
 
+@frappe.whitelist()
+def create_operational_expense_category(parent_category: str, category_name: str) -> dict[str, Any]:
+	"""Create an active leaf expense item under an existing active group."""
+	parent_category = (parent_category or "").strip()
+	category_name = (category_name or "").strip()
+	if not parent_category:
+		frappe.throw(_("Üst gider başlığı seçilmelidir."))
+	if not category_name:
+		frappe.throw(_("Gider kalemi adı boş olamaz."))
+
+	parent = frappe.db.get_value(
+		"Operational Expense Category",
+		parent_category,
+		["name", "category_name", "is_group", "is_active"],
+		as_dict=True,
+	)
+	if not parent:
+		frappe.throw(_("Üst gider başlığı bulunamadı: {0}").format(parent_category))
+	if not parent.is_group:
+		frappe.throw(_("Yeni kalem yalnızca gider başlıklarının altına eklenebilir: {0}").format(parent.category_name))
+	if not parent.is_active:
+		frappe.throw(_("Pasif gider başlığı altına kalem eklenemez: {0}").format(parent.category_name))
+
+	if frappe.db.exists("Operational Expense Category", category_name):
+		frappe.throw(_("Bu gider kalemi zaten var: {0}").format(category_name))
+
+	next_sort = flt(
+		frappe.db.sql(
+			"""
+			SELECT COALESCE(MAX(sort_order), 0) + 10
+			FROM `tabOperational Expense Category`
+			WHERE parent_category = %s
+			""",
+			(parent_category,),
+		)[0][0],
+		0,
+	)
+	doc = frappe.get_doc(
+		{
+			"doctype": "Operational Expense Category",
+			"category_name": category_name,
+			"parent_category": parent_category,
+			"is_group": 0,
+			"is_active": 1,
+			"sort_order": int(next_sort),
+		}
+	)
+	doc.insert()
+	return {
+		"name": doc.name,
+		"label": doc.category_name,
+		"parent_category": parent_category,
+	}
+
+
 def get_operational_expense_summary(filters: dict[str, Any] | str | None = None) -> dict[str, Any]:
 	"""Return total confirmed operational expense in USD."""
 	if not _has_operational_expense_doctype():
