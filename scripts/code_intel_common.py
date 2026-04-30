@@ -841,6 +841,21 @@ def fetch_indexed_file_state(supabase: Any) -> dict[str, set[str]]:
     return state
 
 
+def fetch_active_embedding_dimension(supabase: Any) -> int | None:
+    response = (
+        supabase.table("code_chunks")
+        .select("embedding_dimension")
+        .eq("model_name", MODEL_NAME)
+        .limit(1)
+        .execute()
+    )
+    rows = response_data(response)
+    if not rows:
+        return None
+    dimension = rows[0].get("embedding_dimension")
+    return int(dimension) if dimension else None
+
+
 def delete_chunks_for_paths(supabase: Any, file_paths: list[str]) -> int:
     deleted_rows = 0
     for file_path in sorted(set(file_paths)):

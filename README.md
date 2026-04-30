@@ -75,6 +75,19 @@ need indexing. To fall back to append-only hash deduplication:
 python scripts/index_codebase.py --no-incremental
 ```
 
+For daily syncs, validation search is disabled by default so unchanged runs do
+not load the embedding model. Run validation explicitly when needed:
+
+```bash
+python scripts/index_codebase.py --test-query "dashboard logic"
+```
+
+If local memory allows it, embedding can be tuned with a larger batch size:
+
+```bash
+CODE_INTEL_EMBEDDING_BATCH_SIZE=32 python scripts/index_codebase.py
+```
+
 The HTTP server is only for direct local debugging with curl/browser:
 
 ```bash

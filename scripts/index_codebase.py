@@ -25,6 +25,7 @@ try:
         encode_query,
         encode_texts,
         embedding_sample_exists,
+        fetch_active_embedding_dimension,
         fetch_existing_hashes,
         fetch_indexed_file_state,
         finish_index_run,
@@ -57,6 +58,7 @@ except ModuleNotFoundError:
         encode_query,
         encode_texts,
         embedding_sample_exists,
+        fetch_active_embedding_dimension,
         fetch_existing_hashes,
         fetch_indexed_file_state,
         finish_index_run,
@@ -84,19 +86,27 @@ def index_codebase(
     incremental: bool,
     test_query: str | None,
 ) -> dict[str, Any]:
-    LOGGER.info("Loading embedding model: %s", active_model_name())
-    model = get_embedding_model()
-    embedding_dimension = detect_embedding_dimension(model)
-    LOGGER.info("Embedding dimension detected: %s", embedding_dimension)
-
-    if print_sql:
-        print(schema_sql(embedding_dimension))
-
-    if init_db:
-        LOGGER.info("Initializing Supabase pgvector schema")
-        initialize_database_schema(embedding_dimension)
+    model = None
+    embedding_dimension = None
 
     supabase = get_supabase_client()
+
+    if init_db or print_sql:
+        LOGGER.info("Loading embedding model: %s", active_model_name())
+        model = get_embedding_model()
+        embedding_dimension = detect_embedding_dimension(model)
+        LOGGER.info("Embedding dimension detected: %s", embedding_dimension)
+
+        if print_sql:
+            print(schema_sql(embedding_dimension))
+
+        if init_db:
+            LOGGER.info("Initializing Supabase pgvector schema")
+            initialize_database_schema(embedding_dimension)
+
+    if embedding_dimension is None:
+        embedding_dimension = fetch_active_embedding_dimension(supabase) or DEFAULT_EMBEDDING_DIMENSION
+
     run_id = create_index_run(supabase, embedding_dimension)
 
     try:
@@ -178,7 +188,21 @@ def index_codebase(
             total_to_insert,
         )
 
+        if (chunks_to_index or test_query) and model is None:
+            LOGGER.info("Loading embedding model: %s", active_model_name())
+            model = get_embedding_model()
+            detected_dimension = detect_embedding_dimension(model)
+            LOGGER.info("Embedding dimension detected: %s", detected_dimension)
+            if detected_dimension != embedding_dimension:
+                raise RuntimeError(
+                    "Embedding dimension mismatch for active model: "
+                    f"database/run dimension is {embedding_dimension}, detected model dimension is {detected_dimension}. "
+                    "Recreate the Supabase vector schema before mixing embeddings."
+                )
+
         for embed_batch in batches(chunks_to_index, embedding_batch_size):
+            if model is None:
+                raise RuntimeError("Embedding model was not loaded before encoding chunks.")
             embeddings = encode_texts(model, [chunk.content for chunk in embed_batch], batch_size=embedding_batch_size)
             rows = [
                 {
@@ -251,6 +275,9 @@ def index_codebase(
     }
 
     if test_query:
+        if model is None:
+            LOGGER.info("Loading embedding model: %s", active_model_name())
+            model = get_embedding_model()
         LOGGER.info("Running validation search: %s", test_query)
         query_embedding = encode_query(model, test_query)
         response = supabase.rpc(
@@ -278,7 +305,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Index the umre_ops codebase into Supabase pgvector.")
     add_common_arguments(parser)
     parser.add_argument("--batch-size", type=int, default=100, help="Chunk batch size for deduplication.")
-    parser.add_argument("--embedding-batch-size", type=int, default=16, help="Embedding model batch size.")
+    parser.add_argument(
+        "--embedding-batch-size",
+        type=int,
+        default=int(os.getenv("CODE_INTEL_EMBEDDING_BATCH_SIZE", "16")),
+        help="Embedding model batch size. Defaults to CODE_INTEL_EMBEDDING_BATCH_SIZE or 16.",
+    )
     parser.add_argument("--init-db", action="store_true", help="Create pgvector table, index, and match function.")
     parser.add_argument(
         "--no-incremental",
@@ -298,8 +330,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--test-query",
-        default="dashboard logic",
-        help="Validation query to run after indexing. Use an empty string to disable.",
+        default="",
+        help='Optional validation query to run after indexing, for example "dashboard logic". Disabled by default for faster incremental sync.',
     )
     parser.add_argument(
         "--schema-dimension",
