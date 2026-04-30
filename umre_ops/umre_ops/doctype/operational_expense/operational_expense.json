@@ -19,6 +19,7 @@
   "amount_section",
   "amount",
   "usd_exchange_rate",
+  "usd_currency",
   "usd_amount",
   "description",
   "receipt_attachment",
@@ -121,10 +122,19 @@
    "label": "USD Kuru"
   },
   {
+   "default": "USD",
+   "fieldname": "usd_currency",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "USD Currency",
+   "options": "Currency",
+   "read_only": 1
+  },
+  {
    "fieldname": "usd_amount",
    "fieldtype": "Currency",
    "label": "USD Karşılığı",
-   "options": "USD",
+   "options": "usd_currency",
    "read_only": 1
   },
   {

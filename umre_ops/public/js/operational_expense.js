@@ -20,9 +20,13 @@ frappe.ui.form.on("Operational Expense", {
 	money_account(frm) {
 		preview_usd(frm);
 	},
+	receipt_attachment(frm) {
+		prevent_unsaved_receipt_upload(frm);
+	},
 	refresh(frm) {
 		default_active_season(frm);
 		preview_usd(frm);
+		configure_receipt_attachment(frm);
 	},
 });
 
@@ -49,4 +53,30 @@ function preview_usd(frm) {
 	if (rate > 0) {
 		frm.set_value("usd_amount", amt / rate);
 	}
+}
+
+function configure_receipt_attachment(frm) {
+	const is_new = frm.is_new();
+	frm.set_df_property("receipt_attachment", "read_only", is_new ? 1 : 0);
+	frm.set_df_property(
+		"receipt_attachment",
+		"description",
+		is_new
+			? __("Dekont yüklemek için önce gider formunu kaydedin. Aksi halde Frappe eki bağlamak için formu otomatik kaydeder.")
+			: __("PDF veya resim dosyası yükleyin: pdf, jpg, jpeg, png, webp.")
+	);
+}
+
+function prevent_unsaved_receipt_upload(frm) {
+	if (!frm.is_new() || !frm.doc.receipt_attachment) return;
+	const attachment = frm.doc.receipt_attachment;
+	frm.set_value("receipt_attachment", "");
+	frappe.msgprint({
+		title: __("Dekont daha sonra yüklenmeli"),
+		message: __(
+			"{0} dosyası forma bağlanmadı. Önce gider kaydını kaydedin, ardından dekontu yükleyin.",
+			[frappe.utils.escape_html(attachment)]
+		),
+		indicator: "orange",
+	});
 }
