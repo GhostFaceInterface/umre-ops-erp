@@ -20,6 +20,10 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
 
+      - name: Ensure target directory exists
+        run: |
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "mkdir -p /opt/muhasebe/apps/umre_ops"
+
       - name: Deploy files via rsync
         run: |
           rsync -avz -e "ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no" \
@@ -27,7 +31,7 @@ jobs:
             --exclude '.github/' \
             --exclude 'node_modules/' \
             --exclude 'env/' \
-            ./ ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}/opt/muhasebe/apps/umre_ops/
+            ./ ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/opt/muhasebe/apps/umre_ops/
 
       - name: Run Remote Container Updates
         run: |
