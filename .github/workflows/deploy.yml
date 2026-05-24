@@ -1,0 +1,51 @@
+name: Deploy Umre Ops to VPS
+
+on:
+  push:
+    branches:
+      - version-16  # Her version-16 branch push veya merge işleminde dağıtımı başlatır
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy files via rsync
+        run: |
+          rsync -avz -e "ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no" \
+            --exclude '.git/' \
+            --exclude '.github/' \
+            --exclude 'node_modules/' \
+            --exclude 'env/' \
+            ./ ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}/opt/muhasebe/apps/umre_ops/
+
+      - name: Run Remote Container Updates
+        run: |
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} << 'EOF'
+            cd /opt/muhasebe/gitops
+            
+            # 1. Konteyner yapılandırmasını kontrol et ve ayağa kaldır
+            docker compose up -d
+            
+            # 2. apps.txt içerisinde umre_ops'un bulunduğundan emin ol
+            docker exec -i $(docker ps -q -f name=backend) bash -c "grep -qxF 'umre_ops' sites/apps.txt || echo 'umre_ops' >> sites/apps.txt"
+            
+            # 3. Statik JS ve CSS dosyalarını paylaşılan assets volume'ünde derle
+            docker exec -i $(docker ps -q -f name=backend) bench build --app umre_ops
+            
+            # 4. Veritabanı şemalarını ve DocType yapılandırmalarını güncelle (migrate)
+            docker exec -i $(docker ps -q -f name=backend) bench --site frontend migrate
+            
+            # 5. Gunicorn Python önbelleğini temizlemek için backend konteynerini yeniden başlat
+            docker restart $(docker ps -q -f name=backend)
+          EOF
