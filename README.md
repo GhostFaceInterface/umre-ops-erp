@@ -28,163 +28,34 @@ Pre-commit is configured to use the following tools for checking and formatting 
 - prettier
 - pyupgrade
 
-### AI Code Intelligence
+### 🌪️ Agentic Multi-Agent & Workflow Architecture
 
-This repo includes a Supabase pgvector-backed code intelligence system for AI agents.
+This repository has been fully upgraded to a modern **@vudovn/ag-kit** based multi-agent orchestration, multi-layered memory, and dynamic workflow architecture.
 
-Default production embedding model:
+#### 👥 7 Expert Agent Personas (`.agent/agents/`)
+- **`scout-agent`**: Codebase pathfinder, dependency mapper, and semantic scanning expert.
+- **`frappe-architect`**: Custom Desk elements, Single DocTypes, and Frappe bench commands.
+- **`accounting-ledger-specialist`**: Statutory accounting plans, journal entry posting rules.
+- **`cost-engine-auditor`**: Precise cost component calculation, meal & visa costs formulas.
+- **`qa-integrity-validator`**: Gold standard automated tests and server-side checks.
+- **`app-cleaner-janitor`**: Safely quarantining codebase debris and caching issues.
+- **`localization-expert`**: Turkish translation wrapping and localized context sync.
 
-```bash
-BAAI/bge-code-v1
-```
+#### 🧠 3-Tier Persistent Memory (`.agent/memory/`)
+1. **Tier 1 (`MEMORY.md`)**: Main workspace log containing current sprint focus and session audits.
+2. **Tier 2 (`topics/`)**: Deep domain knowledge (Frappe architecture, statutory accounting, cost formulas).
+3. **Tier 3 (`audit_trail.jsonl`)**: Chronological audit trail logs for all operations.
 
-Setup:
-
-```bash
-python3 -m venv .venv-code-intel
-source .venv-code-intel/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-```
-
-Fill `.env` with Supabase credentials, then generate the schema SQL:
-
-```bash
-python scripts/index_codebase.py --print-sql
-```
-
-When migrating from an older embedding model, first print and run the reset SQL in Supabase SQL Editor:
-
-```bash
-python scripts/index_codebase.py --print-reset-sql
-```
-
-Then run the schema SQL and index:
-
-```bash
-python scripts/index_codebase.py
-python scripts/search.py "dashboard logic"
-```
-
-`index_codebase.py` is incremental by default. On each run it compares indexed
-`metadata.file_path` + `content_hash` against the current working tree, deletes
-stale chunks for changed/removed files, and inserts only the chunks that still
-need indexing. To fall back to append-only hash deduplication:
-
-```bash
-python scripts/index_codebase.py --no-incremental
-```
-
-For daily syncs, validation search is disabled by default so unchanged runs do
-not load the embedding model. Run validation explicitly when needed:
-
-```bash
-python scripts/index_codebase.py --test-query "dashboard logic"
-```
-
-If local memory allows it, embedding can be tuned with a larger batch size:
-
-```bash
-CODE_INTEL_EMBEDDING_BATCH_SIZE=32 python scripts/index_codebase.py
-```
-
-The HTTP server is only for direct local debugging with curl/browser:
-
-```bash
-python scripts/server.py --host 127.0.0.1 --port 8765
-```
-
-Agent integration is intentionally modular. The MCP server is the stable core;
-Cursor, Codex, and other clients are only thin config adapters around the same
-launcher.
-
-Canonical files:
-
-- `scripts/mcp_server.py` — MCP tools and Supabase-backed retrieval.
-- `scripts/run_mcp_server.sh` — shared stdio launcher used by agents.
-- `scripts/agent_config.py` — prints agent-specific config snippets.
-- `config/agents/code_intelligence_mcp.json` — generic manifest.
-
-For MCP-capable agents, use the shared stdio launcher:
-
-```bash
-/bin/bash scripts/run_mcp_server.sh
-```
-
-The project-local Cursor config is already provided at `.cursor/mcp.json`.
-It contains no Supabase credentials; those are loaded from `.env` by the Python
-scripts. Regenerate it if needed:
-
-```bash
-python scripts/agent_config.py --write-cursor
-```
-
-Print a Cursor JSON config:
-
-```bash
-python scripts/agent_config.py --format cursor
-```
-
-Print a Codex TOML config snippet:
-
-```bash
-python scripts/agent_config.py --format codex
-```
-
-Print a generic MCP manifest for another agent:
-
-```bash
-python scripts/agent_config.py --format generic
-```
-
-Example Cursor config:
-
-```json
-{
-  "mcpServers": {
-    "umre_ops_code_intelligence": {
-      "command": "/bin/bash",
-      "args": [
-        "scripts/run_mcp_server.sh"
-      ],
-      "env": {
-        "CODEBASE_ROOT": "."
-      }
-    }
-  }
-}
-```
-
-Example Codex config snippet:
-
-```toml
-[mcp_servers.umre_ops_code_intelligence]
-command = "/bin/bash"
-args = ["/absolute/path/to/umre_ops/scripts/run_mcp_server.sh"]
-
-[mcp_servers.umre_ops_code_intelligence.env]
-CODEBASE_ROOT = "/absolute/path/to/umre_ops"
-```
-
-The MCP tools are:
-
-- `search_code(query, limit)`
-- `get_file(path, max_chars)`
-- `get_function(name, limit, max_chars)`
-- `code_index_status()`
-- `estimate_context_savings(query, limit)`
-- `mcp_usage_summary(limit)`
-- `project_cleanup_context()`
-
-Do not mix embeddings from different models in the same vector table. Changing `CODE_INTEL_MODEL_NAME` requires resetting the vector table and reindexing.
-
-MCP usage telemetry is written automatically to `.code-intel/mcp_usage.jsonl`
-while the MCP server is running. The report distinguishes the theoretical
-full-codebase baseline from a more realistic Codex/Cursor-style practical
-agent baseline. Summarize token savings and timing with:
-
-```bash
-python scripts/mcp_usage_report.py
+#### 🔗 10 Dynamic Workflows (`.agent/workflows/`)
+Workflows are equipped with YAML frontmatter headers to be fully discoverable and runnable by the IDE and Antigravity SDK:
+- `/plan` (mandatory agent/workflow assignment)
+- `/orchestrate` (subagent spawning, state locks, error exception protocols)
+- `/brainstorm` (collaborative conflict resolution)
+- `/test` & `/verify` (automated unit/integration tests and statutory integrity checks)
+- `/clean` (cache wiping and quarantines)
+- `/post` (financial journal postings)
+- `/localize` (Turkish translation sync)
+- `/scout` & `/import` (code pathfinding and hard-validated excel imports)
 ```
 
 ### CI

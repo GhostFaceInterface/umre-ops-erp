@@ -10,6 +10,8 @@
 (function () {
 	"use strict";
 
+	console.log("[ScrollRestoration] >>> GLOBAL SCRIPT YUKLENDI! <<<");
+
 	const PANEL_ID = "umre-fin-panel";
 	const WORKSPACE_NAME = "Umre Operasyon Paneli";
 	const WORKSPACE_ROUTES = ["umre-operasyon-paneli", "Umre Operasyon Paneli"];
@@ -499,9 +501,136 @@
 		});
 	}
 
+	// --- Scroll Restoration Module ---
+	const _scroll_restoration = {
+		should_restore: false,
+		debounce_timeout: null,
+
+		init() {
+			console.log("[ScrollRestoration] Initializing Scroll Restoration Module...");
+			
+			// 1. Scroll hareketlerini debounced olarak kaydet
+			const save_scroll = () => {
+				if (this.debounce_timeout) clearTimeout(this.debounce_timeout);
+				this.debounce_timeout = setTimeout(() => {
+					if (typeof frappe === "undefined" || !frappe.get_route_str) return;
+					const route = frappe.get_route_str();
+					if (route) {
+						const scroll_val = this.get_scroll_position();
+						sessionStorage.setItem('frappe_scroll_' + route, scroll_val);
+						console.log("[ScrollRestoration] Saved scroll position for route [" + route + "]: " + scroll_val);
+					}
+				}, 100);
+			};
+
+			window.addEventListener('scroll', save_scroll, { passive: true });
+			// Ayrıca olası iç div scroll'larını yakalamak için capture (bubble öncesi) aşamasında dinle
+			document.addEventListener('scroll', save_scroll, { passive: true, capture: true });
+
+			// 2. Geri/İleri buton hareketini yakala (Suppression'ı aşmak için capture aşamasında dinle)
+			window.addEventListener('popstate', () => {
+				console.log("[ScrollRestoration] POPSTATE event captured! Navigation detected.");
+				this.should_restore = true;
+			}, { capture: true });
+
+			// Yedek olarak window.onpopstate'i de dinleyelim
+			const original_onpopstate = window.onpopstate;
+			window.onpopstate = (event) => {
+				console.log("[ScrollRestoration] window.onpopstate triggered!");
+				this.should_restore = true;
+				if (typeof original_onpopstate === 'function') {
+					original_onpopstate.apply(window, [event]);
+				}
+			};
+
+			// 3. Frappe sayfa değişimlerinde scroll restorasyonunu tetikle
+			$(document).on("page-change", () => {
+				console.log("[ScrollRestoration] page-change event triggered.");
+				this.trigger_restore();
+			});
+			if (frappe.router && frappe.router.on) {
+				frappe.router.on("change", () => {
+					console.log("[ScrollRestoration] frappe.router 'change' event triggered.");
+					this.trigger_restore();
+				});
+			}
+		},
+
+		get_scroll_position() {
+			let max_scroll = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+			const containers = ['.layout-main-section', '.layout-main-section-wrapper', '.page-container', '#page-workspace', '.page-body'];
+			for (const selector of containers) {
+				const el = document.querySelector(selector);
+				if (el && el.scrollTop > max_scroll) {
+					max_scroll = el.scrollTop;
+				}
+			}
+			return max_scroll;
+		},
+
+		set_scroll_position(target_scroll) {
+			window.scrollTo(0, target_scroll);
+			const containers = ['.layout-main-section', '.layout-main-section-wrapper', '.page-container', '#page-workspace', '.page-body'];
+			let applied = false;
+			for (const selector of containers) {
+				const el = document.querySelector(selector);
+				if (el) {
+					el.scrollTop = target_scroll;
+					applied = true;
+				}
+			}
+			console.log("[ScrollRestoration] Applied scroll position: " + target_scroll + " (Containers applied: " + applied + ")");
+		},
+
+		trigger_restore() {
+			console.log("[ScrollRestoration] trigger_restore checks: should_restore=" + this.should_restore);
+			if (!this.should_restore) return;
+			const route = frappe.get_route_str();
+			if (!route) return;
+
+			const saved = sessionStorage.getItem('frappe_scroll_' + route);
+			console.log("[ScrollRestoration] Found saved scroll for [" + route + "]: " + saved);
+			if (saved) {
+				const target_scroll = parseInt(saved, 10);
+				if (target_scroll > 0) {
+					this.attempt_scroll(route, target_scroll, 0);
+				}
+			}
+			this.should_restore = false; // Tüketildi
+		},
+
+		attempt_scroll(route, target_scroll, attempts) {
+			// Rota değiştiyse veya 30 denemeyi (1.5 saniye) geçtiysek iptal et
+			if (frappe.get_route_str() !== route) {
+				console.log("[ScrollRestoration] Scroll attempt aborted because route changed to: " + frappe.get_route_str());
+				return;
+			}
+			if (attempts > 30) {
+				console.log("[ScrollRestoration] Scroll attempt aborted after 30 attempts.");
+				return;
+			}
+
+			this.set_scroll_position(target_scroll);
+
+			// Sayfa henüz tam render edilmediyse ve hedeflenen scroll'a ulaşamadıysak tekrar dene
+			const current = this.get_scroll_position();
+			console.log("[ScrollRestoration] Restore attempt [" + attempts + "] - Current: " + current + " / Target: " + target_scroll);
+			if (Math.abs(current - target_scroll) > 8) {
+				setTimeout(() => {
+					this.attempt_scroll(route, target_scroll, attempts + 1);
+				}, 50);
+			} else {
+				console.log("[ScrollRestoration] Scroll successfully restored to: " + current);
+			}
+		}
+	};
+
 	// --- bootstrap -----------------------------------------------------
 
 	function bootstrap() {
+		// Initialize scroll restoration
+		_scroll_restoration.init();
+
 		// Mount on every route change AND on initial DOM ready.
 		$(document).on("app_ready page-change", ensure_mounted);
 

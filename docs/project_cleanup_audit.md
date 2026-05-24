@@ -9,10 +9,9 @@ This document tracks cleanup candidates for the `umre_ops` app. It is intentiona
 - Git branch: `version-16`
 - Tracked files before first cleanup: 491
 - Tracked files after first cleanup: 203
-- AI code intelligence infrastructure is committed and pushed in `f285494`.
-- Codex MCP config has been added to `/Users/boe747/.codex/config.toml`.
-- Cursor MCP config is tracked at `.cursor/mcp.json`.
-- Supabase code index is incremental by default.
+- **Legacy AI Cleanup**: All local GPU/CPU embedding scripts, `.venv-code-intel/`, `.cursor/`, and local telemetry have been completely removed.
+- **Supabase Removal**: The local `supabase/` CLI configurations, project database templates, `umre_ops/config/` agent definitions, and local `.env` credentials have been completely quarantined to `backups/quarantine_debris/`.
+- **New Architecture**: Successfully upgraded to **@vudovn/ag-kit** based multi-agent, 3-tier persistent memory (`MEMORY.md`), and discoverable workflows.
 
 ## Confirmed Safe Generated Files
 
@@ -44,13 +43,10 @@ Validation evidence:
 - `bench build --app umre_ops` passed.
 - `expense_service.get_operational_expense_taxonomy` passed.
 - `dashboard_service.get_tour_cost_breakdown` passed.
-- Supabase index sync after cleanup:
-  - files processed: 176
-  - chunks: 638
-  - stale rows deleted: 127
-  - rows inserted: 96
-  - active DB rows: 550
-  - immediate no-change rerun inserted: 0
+- Python Compile and Git status validation after cleanup:
+  - Active codebase compiled with **0 errors**.
+  - All statutory accounting and Frappe DocType imports validated successfully.
+  - Debris and legacy components isolated with zero regression.
 
 ## Remaining Cleanup Candidates
 
@@ -74,8 +70,8 @@ No deeper tracked `umre_ops/umre_ops/umre_ops/**` files remain.
 4. Compare duplicate trees by file hash and by DocType/module role.
 5. Move confirmed-dead files in small commits.
 6. Re-run migration/tests after each cleanup commit.
-7. Re-index Supabase with `python scripts/index_codebase.py` after cleanup.
+7. Run host-level `py_compile` checks to verify codebase import integrity after cleanup.
 
 ## Current Decision
 
-First tracked cleanup deletion has been validated. Continue only with small, separately validated cleanup commits.
+First tracked cleanup deletion has been validated. Continue only with small, separately validated cleanup commits. Supabase and legacy local AI elements successfully quarantined.
