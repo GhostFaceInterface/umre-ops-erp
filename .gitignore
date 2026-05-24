@@ -83,3 +83,7 @@ common_site_config.json
 !.env.example
 .DS_Store
 .code-intel/
+
+# Rclone config containing sensitive tokens (Security Compliance)
+/backups/rclone.conf
+

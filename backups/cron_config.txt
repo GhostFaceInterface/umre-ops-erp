@@ -1,0 +1,2 @@
+# Canlı VPS Crontab zamanlayıcı tanımı (Her saat başı akıllı yedekleme ve OneDrive kopyalama)
+0 * * * * /bin/bash /opt/muhasebe/backups/backup_to_onedrive.sh >> /opt/muhasebe/backups/backup.log 2>&1
