@@ -12,9 +12,8 @@ from typing import Any
 
 import frappe
 from frappe import _
-from frappe.utils import flt, getdate, now, nowdate
+from frappe.utils import flt, getdate, now
 from frappe.utils.xlsxutils import read_xlsx_file_from_attached_file
-
 
 DOCTYPE_IMPORT = "Umre Excel Import"
 DOCTYPE_UMRECI = "Umreci"
@@ -26,6 +25,7 @@ REQUIRED_COLUMNS = (
 	"SOYADI",
 	"TC KİMLİK NO",
 	"DOĞUM TARİHİ",
+	"KAYIT TARİHİ",
 	"İÇ HAT BAĞLANTI",
 	"TELEFON NO",
 	"ODA SAYISI",
@@ -37,6 +37,7 @@ REQUIRED_COLUMNS = (
 )
 
 OPTIONAL_COLUMNS = (
+	"ÖDEME TARİHİ",
 	"CİNSİYET",
 	"PASAPORT NO",
 	"MALİYET",
@@ -48,6 +49,15 @@ COLUMN_ALIASES = {
 	"SOYADI": ("SOYAD", "SOYADI"),
 	"TC KİMLİK NO": ("TC", "TC KİMLİK NO", "TC KIMLIK NO"),
 	"DOĞUM TARİHİ": ("DOĞUM TARİHİ", "DOGUM TARIHI", "DOĞUM TARIHI"),
+	"KAYIT TARİHİ": ("KAYIT TARİHİ", "KAYIT TARIHI", "REGISTRATION DATE"),
+	"ÖDEME TARİHİ": (
+		"ÖDEME TARİHİ",
+		"ÖDEME TARIHI",
+		"ODEME TARIHI",
+		"TAHSİLAT TARİHİ",
+		"TAHSILAT TARIHI",
+		"PAYMENT DATE",
+	),
 	"İÇ HAT BAĞLANTI": ("GELDİĞİ İL", "GELDIGI IL", "İÇ HAT BAĞLANTI", "IC HAT BAGLANTI"),
 	"TELEFON NO": ("TELEFON", "TELEFON NO", "TELEFON NUMARASI"),
 	"ODA SAYISI": ("ODA", "ODA SAYISI", "ODA TİPİ", "ODA TIPI"),
@@ -343,16 +353,18 @@ def _umreci_payload(row: dict[str, Any], tc: str) -> dict[str, Any]:
 
 
 def _booking_payload(row: dict[str, Any], umreci_name: str, tur_name: str, dry_run: bool) -> dict[str, Any]:
+	registration_date = parse_date(row.get("KAYIT TARİHİ"))
+	if not registration_date:
+		frappe.throw(_("KAYIT TARİHİ is required and must contain a valid date."))
 	return {
 		"umreci": umreci_name,
 		"tur": tur_name,
 		"oda_tipi": map_oda_tipi(row["ODA SAYISI"]),
 		"ic_hat_baglanti": normalize_city(row["İÇ HAT BAĞLANTI"]),
 		"kimden_geldi": _get_or_create_referral(row["KİMDEN"], dry_run=dry_run),
-		"odenen": safe_float(row["ÖDENEN"]),
 		"kms": safe_float(row["KMS"]),
 		"ucret": safe_float(row["ÜCRET"]),
-		"kayit_tarihi": parse_date(row["DOĞUM TARİHİ"]) or nowdate(),
+		"kayit_tarihi": registration_date,
 		"not": preserve_excel_text(row.get("AÇIKLAMA")) or None,
 	}
 
@@ -361,18 +373,30 @@ def _upsert_payment_row(booking, row: dict[str, Any], import_name: str, row_numb
 	amount = safe_float(row["ÖDENEN"])
 	if not amount:
 		return None
+	if amount < 0:
+		frappe.throw(_("ÖDENEN must be greater than 0 when a payment is supplied."))
+	payment_date = parse_date(row.get("ÖDEME TARİHİ"))
+	if not payment_date:
+		frappe.throw(_("ÖDEME TARİHİ is required when ÖDENEN is greater than 0."))
 	key = f"UMRE-EXCEL::{booking.tur}::{booking.umreci}"
 	for payment in booking.get("payments") or []:
 		if payment.idempotency_key == key:
+			is_posted = payment.posting_status == "Posted" or payment.payment_entry or payment.journal_entry
+			if is_posted:
+				same_amount = abs(flt(payment.amount) - amount) <= 0.000001
+				same_date = parse_date(payment.posting_date) == payment_date
+				if not same_amount or not same_date:
+					frappe.throw(_("A posted payment cannot be changed by Excel import."))
+				return "unchanged_posted"
 			payment.amount = amount
-			payment.posting_date = parse_date(row["DOĞUM TARİHİ"]) or nowdate()
+			payment.posting_date = payment_date
 			payment.external_reference = import_name
 			payment.remarks = f"Excel import {import_name} row {row_number}"
 			return "updated"
 	booking.append(
 		"payments",
 		{
-			"posting_date": parse_date(row["DOĞUM TARİHİ"]) or nowdate(),
+			"posting_date": payment_date,
 			"amount": amount,
 			"currency": frappe.db.get_value("Umre Tour", booking.tur, "para_birimi"),
 			"external_reference": import_name,
@@ -388,6 +412,14 @@ def _process_row(row: dict[str, Any], tur_name: str, summary: ImportSummary, row
 	tc = normalize_tc(row.get("TC KİMLİK NO"))
 	if not tc:
 		frappe.throw(_("Missing TC KİMLİK NO"))
+	# Validate the explicit business date before any row-level document is changed.
+	if not parse_date(row.get("KAYIT TARİHİ")):
+		frappe.throw(_("KAYIT TARİHİ is required and must contain a valid date."))
+	payment_amount = safe_float(row.get("ÖDENEN"))
+	if payment_amount < 0:
+		frappe.throw(_("ÖDENEN must be greater than 0 when a payment is supplied."))
+	if payment_amount > 0 and not parse_date(row.get("ÖDEME TARİHİ")):
+		frappe.throw(_("ÖDEME TARİHİ is required when ÖDENEN is greater than 0."))
 
 	log = {
 		"row_number": row_number,
@@ -401,6 +433,8 @@ def _process_row(row: dict[str, Any], tur_name: str, summary: ImportSummary, row
 		"error_message": None,
 		"created_or_updated_doc": None,
 	}
+	if payment_amount > 0:
+		log["payment_action"] = "would_create_or_update" if dry_run else None
 
 	existing_umreci = _find_existing_umreci(tc)
 	umreci_payload = _umreci_payload(row, tc)
@@ -450,7 +484,7 @@ def run_import(docname: str, *, dry_run: bool) -> dict:
 	if not frappe.db.exists("Umre Tour", import_doc.target_tour):
 		frappe.throw(_("Target Umre Tour does not exist."))
 
-	_, rows = _read_rows(import_doc)
+	_discovered_columns, rows = _read_rows(import_doc)
 	summary = ImportSummary(total_rows=len(rows))
 	row_log = []
 
@@ -474,7 +508,7 @@ def run_import(docname: str, *, dry_run: bool) -> dict:
 				}
 			)
 
-	status = "Validated" if dry_run else "Completed"
+	status = "Failed" if summary.row_errors else ("Validated" if dry_run else "Completed")
 	_update_import_doc(docname, summary, row_log, status)
 	return {"summary": asdict(summary), "rows": row_log}
 

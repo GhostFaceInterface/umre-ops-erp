@@ -19,6 +19,7 @@ class IdempotencyResult:
 	status: str
 	result_doctype: str | None
 	result_name: str | None
+	request_hash: str | None
 
 
 def stable_json_dumps(payload: Any) -> str:
@@ -92,7 +93,7 @@ def get_existing_result(idempotency_key: str) -> IdempotencyResult | None:
 	row = frappe.db.get_value(
 		"Umre Posting Event",
 		{"idempotency_key": idempotency_key},
-		["name", "status", "result_doctype", "result_name"],
+		["name", "status", "result_doctype", "result_name", "request_hash"],
 		as_dict=True,
 	)
 	if not row:
@@ -102,6 +103,7 @@ def get_existing_result(idempotency_key: str) -> IdempotencyResult | None:
 		status=row.get("status"),
 		result_doctype=row.get("result_doctype"),
 		result_name=row.get("result_name"),
+		request_hash=row.get("request_hash"),
 	)
 
 
@@ -134,4 +136,3 @@ def mark_event_failed(*, event_name: str, error: str) -> None:
 		},
 		update_modified=False,
 	)
-

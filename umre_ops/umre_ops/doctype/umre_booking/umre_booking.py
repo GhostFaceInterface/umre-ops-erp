@@ -9,11 +9,11 @@ from frappe.exceptions import PermissionError
 from frappe.model.document import Document
 from frappe.utils import flt
 
+from umre_ops.umre_ops.services import cost_engine
 from umre_ops.umre_ops.services.booking_calculation_service import (
 	apply_to_booking,
 	compute_booking_view,
 )
-from umre_ops.umre_ops.services import cost_engine
 
 
 class UmreBooking(Document):
@@ -25,6 +25,7 @@ class UmreBooking(Document):
 		#    Bypass is intentional and explicit via `flags.ignore_financial_lock`
 		#    (used only by the corrective patch).
 		self._enforce_financial_lock()
+		self._enforce_posted_payment_lock()
 
 		# 2) Pure read-only "soft defaults" (`vize_tipi`, `yolcu_tipi`). These
 		#    NEVER touch financial fields. The previous mutation chain that
@@ -112,6 +113,61 @@ class UmreBooking(Document):
 			amt = flt(getattr(row, "amount", 0) or 0)
 			total += amt
 		self.odenen = flt(total)
+
+	def _enforce_posted_payment_lock(self) -> None:
+		"""Do not allow a submitted accounting voucher's source row to drift."""
+		if self.is_new():
+			return
+		flags = getattr(self, "flags", None)
+		if flags is not None and flags.get("ignore_posted_payment_lock"):
+			return
+		persisted = frappe.get_all(
+			"Umre Booking Payment",
+			filters={"parent": self.name, "parenttype": "Umre Booking", "parentfield": "payments"},
+			fields=[
+				"name",
+				"posting_date",
+				"amount",
+				"currency",
+				"mode_of_payment",
+				"reference_no",
+				"reference_date",
+				"posting_status",
+				"journal_entry",
+				"payment_entry",
+				"idempotency_key",
+			],
+			limit_page_length=0,
+		)
+		protected = {
+			row.name: row
+			for row in persisted
+			if row.posting_status == "Posted" or row.journal_entry or row.payment_entry
+		}
+		if not protected:
+			return
+		current = {row.name: row for row in self.get("payments") or [] if row.name}
+		for row_name, old in protected.items():
+			new = current.get(row_name)
+			if not new:
+				frappe.throw(_("Posted payment row {0} cannot be deleted.").format(row_name))
+			if abs(flt(new.amount) - flt(old.amount)) > 0.000001:
+				frappe.throw(_("Posted payment row {0} amount cannot be changed.").format(row_name))
+			for field in (
+				"posting_date",
+				"currency",
+				"mode_of_payment",
+				"reference_no",
+				"reference_date",
+				"posting_status",
+				"journal_entry",
+				"payment_entry",
+				"idempotency_key",
+			):
+				if str(new.get(field) or "") != str(old.get(field) or ""):
+					frappe.throw(
+						_("Posted payment row {0} field {1} cannot be changed.").format(row_name, field)
+					)
 
 
 @frappe.whitelist()

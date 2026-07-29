@@ -10,6 +10,7 @@
   "default_currency",
   "active_season",
   "dashboard_default_view",
+  "accounting_posting_enabled",
   "cost_centers_section",
   "umre_operasyon_root_cost_center",
   "genel_gider_cost_center",
@@ -58,6 +59,13 @@
    "fieldtype": "Select",
    "label": "Panel Varsayılan Görünüm",
    "options": "Tur Maliyeti\nSezon Genel Giderleri\nHer İkisi"
+  },
+  {
+   "default": "0",
+   "description": "Kapalıyken gerçek Journal Entry ve Payment Entry oluşturulamaz; dry-run yalnız doğrulama yapar.",
+   "fieldname": "accounting_posting_enabled",
+   "fieldtype": "Check",
+   "label": "Muhasebe Kayıtlarını Etkinleştir"
   },
   {
    "fieldname": "cost_centers_section",

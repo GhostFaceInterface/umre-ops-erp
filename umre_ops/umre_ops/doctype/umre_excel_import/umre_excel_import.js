@@ -22,7 +22,7 @@ frappe.ui.form.on("Umre Excel Import", {
 			});
 		});
 
-		if (!["Queued", "Processing"].includes(frm.doc.status)) {
+		if (frm.doc.status === "Validated" && !frm.doc.row_errors) {
 			frm.add_custom_button(__("Start Import"), () => {
 				frappe.confirm(
 					__("This will create or update Umreci and Umre Booking records. Continue?"),

@@ -16,6 +16,7 @@ import frappe
 from frappe import _
 from frappe.utils import flt
 
+from umre_ops.umre_ops.services.permission_service import require_doctype_permission
 from umre_ops.umre_ops.services.season_service import get_active_season as _get_active_season
 
 CURRENCY = "USD"
@@ -49,12 +50,14 @@ def normalize_filters(filters: dict[str, Any] | str | None = None) -> dict[str, 
 @frappe.whitelist()
 def get_active_season(required: bool = False) -> str | None:
 	"""Expose the global active Umre season for forms and dashboard clients."""
+	require_doctype_permission("Umre Season", "read")
 	return _get_active_season(required=bool(required))
 
 
 @frappe.whitelist()
 def get_seasons() -> list[dict[str, Any]]:
 	"""Return seasons for expense-entry selection."""
+	require_doctype_permission("Umre Season", "read")
 	if not frappe.db.exists("DocType", "Umre Season"):
 		return []
 
@@ -179,6 +182,7 @@ def _category_joins() -> str:
 @frappe.whitelist()
 def get_operational_expense_taxonomy() -> list[dict[str, Any]]:
 	"""Return active operational expense taxonomy as main groups with leaf items."""
+	require_doctype_permission("Operational Expense Category", "read")
 	if not frappe.db.exists("DocType", "Operational Expense Category"):
 		return []
 
@@ -213,6 +217,8 @@ def get_operational_expense_taxonomy() -> list[dict[str, Any]]:
 @frappe.whitelist()
 def create_operational_expense_category(parent_category: str, category_name: str) -> dict[str, Any]:
 	"""Create an active leaf expense item under an existing active group."""
+	require_doctype_permission("Operational Expense Category", "write")
+	require_doctype_permission("Operational Expense Category", "create")
 	parent_category = (parent_category or "").strip()
 	category_name = (category_name or "").strip()
 	if not parent_category:
@@ -344,6 +350,7 @@ def get_operational_expense_entries(filters: dict[str, Any] | str | None = None)
 	list intentionally includes Draft/Cancelled rows too, so users can see why a
 	recently-entered expense may not affect the dashboard total yet.
 	"""
+	require_doctype_permission("Operational Expense", "read")
 	effective_filters = _filters_with_active_season(filters)
 	if not _has_operational_expense_doctype():
 		return {"active_season": effective_filters.get("season"), "entries": []}
@@ -458,6 +465,7 @@ def get_operational_dashboard_data(filters: dict[str, Any] | str | None = None) 
 	"""
 	from umre_ops.umre_ops.services.dashboard_service import get_tour_cost_breakdown
 
+	require_doctype_permission("Operational Expense", "read")
 	filters = normalize_filters(filters)
 	tour = filters.get("tour")
 	return {

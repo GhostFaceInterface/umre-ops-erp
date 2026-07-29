@@ -3,18 +3,18 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import frappe
 from frappe import _
-from frappe.utils import flt, nowdate
+from frappe.utils import flt
 
 from umre_ops.umre_ops.services.accounting_service import (
 	post_booking_receipt_journal_entry,
 	post_booking_receipt_payment_entry,
 )
 from umre_ops.umre_ops.services.mapping_service import get_account_mapping, map_odeme_turu_to_mode_of_payment
+from umre_ops.umre_ops.services.permission_service import require_document_permission
 
 
 def _booking_default_currency(booking) -> str | None:
@@ -50,10 +50,12 @@ def add_payment_row(
 	Returns the row as dict (including its stable row `name`).
 	"""
 	b = frappe.get_doc("Umre Booking", booking_name)
-	posting_date = posting_date or nowdate()
+	require_document_permission(b, "write")
+	if not posting_date:
+		frappe.throw(_("Payment posting date is required."))
 	amount = flt(amount)
-	if amount == 0:
-		frappe.throw(_("Payment amount cannot be 0."))
+	if amount <= 0:
+		frappe.throw(_("Payment amount must be greater than 0."))
 
 	if not mode_of_payment:
 		mapping = get_account_mapping(getattr(b, "company", None))
@@ -73,7 +75,7 @@ def add_payment_row(
 			"posting_status": "Draft",
 		},
 	)
-	b.save(ignore_permissions=True)
+	b.save()
 	return row.as_dict()
 
 
@@ -89,6 +91,7 @@ def post_payment_row_receipt(
 	Idempotent per payment row using `Umre Posting Event`.
 	"""
 	b = frappe.get_doc("Umre Booking", booking_name)
+	require_document_permission(b, "read" if dry_run else "write")
 	row = None
 	for r in b.get("payments") or []:
 		if r.name == payment_row_name:
@@ -96,6 +99,10 @@ def post_payment_row_receipt(
 			break
 	if not row:
 		frappe.throw(_("Payment row not found on this booking."))
+	if not row.posting_date:
+		frappe.throw(_("Payment posting date is required."))
+	if flt(row.amount) <= 0:
+		frappe.throw(_("Payment amount must be greater than 0."))
 
 	# deterministic idempotency based on the child row stable name
 	idempotency_key = row.idempotency_key or _build_idempotency_key(
@@ -105,18 +112,6 @@ def post_payment_row_receipt(
 	# store the key on the row for visibility and for external API callers
 	if not row.idempotency_key:
 		row.idempotency_key = idempotency_key
-
-	payload = {
-		"booking": booking_name,
-		"payment_row": payment_row_name,
-		"posting_date": row.posting_date,
-		"amount": flt(row.amount),
-		"currency": row.currency,
-		"mode_of_payment": row.mode_of_payment,
-		"paid_account": paid_account,
-		"reference_no": row.reference_no,
-		"external_reference": row.external_reference,
-	}
 
 	# Preferred: Payment Entry when Customer exists (reconciliation-friendly).
 	# Fallback: Journal Entry only when Customer is NOT used on the booking.
@@ -152,8 +147,9 @@ def post_payment_row_receipt(
 			row.payment_entry = res.name
 			row.posting_status = "Posted"
 
-	b.flags.ignore_booking_recalc = True
-	b.save(ignore_permissions=True)
+	if not dry_run:
+		b.flags.ignore_booking_recalc = True
+		b.save()
 
 	return {
 		"idempotency_key": idempotency_key,
@@ -191,4 +187,3 @@ def api_post_payment_receipt(docname: str, payment_row_name: str, paid_account: 
 		paid_account=paid_account,
 		dry_run=bool(int(dry_run)),
 	)
-

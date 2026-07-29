@@ -40,7 +40,9 @@ from typing import Any
 import frappe
 from frappe import _
 from frappe.utils import flt
+
 from umre_ops.umre_ops.services.expense_service import get_operational_dashboard_summary
+from umre_ops.umre_ops.services.permission_service import require_doctype_permission
 
 CURRENCY = "USD"
 
@@ -159,6 +161,7 @@ def get_tour_cost_breakdown(tour: str | None = None) -> dict[str, Any]:
 	across every tour in the database — i.e. the company-wide view a manager
 	wants when they open the Operasyon Paneli.
 	"""
+	require_doctype_permission("Umre Booking", "read")
 	# Empty-string fallback (Frappe URL params come through as "").
 	tour = (tour or "").strip() or None
 
@@ -238,6 +241,7 @@ def get_operational_expense_dashboard(
 
 	Draft / Cancelled rows are excluded.
 	"""
+	require_doctype_permission("Operational Expense", "read")
 	if not frappe.db.exists("DocType", "Operational Expense"):
 		return {
 			"currency": CURRENCY,
@@ -373,6 +377,8 @@ def get_operational_dashboard_data(filters: dict[str, Any] | str | None = None) 
 	"""
 	from umre_ops.umre_ops.services.expense_service import normalize_filters
 
+	require_doctype_permission("Umre Booking", "read")
+	require_doctype_permission("Operational Expense", "read")
 	filters = normalize_filters(filters)
 	return {
 		"tour_dashboard": get_tour_cost_breakdown(tour=filters.get("tour")),
