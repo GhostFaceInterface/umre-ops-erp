@@ -9,6 +9,9 @@ import frappe
 from frappe import _
 from frappe.utils import flt
 
+from umre_ops.umre_ops.doctype.umre_booking_payment.umre_booking_payment import (
+	validate_payment_date_provenance,
+)
 from umre_ops.umre_ops.services.accounting_service import (
 	post_booking_receipt_journal_entry,
 	post_booking_receipt_payment_entry,
@@ -32,6 +35,29 @@ def _booking_default_currency(booking) -> str | None:
 
 def _build_idempotency_key(*, booking_name: str, payment_row_name: str, kind: str) -> str:
 	return f"UMRE::{booking_name}::{kind}::{payment_row_name}"
+
+
+def _validate_payment_accounting_state(row, *, expected_doctype: str) -> str:
+	"""Fail closed unless the row is a clean draft or a consistent posted retry."""
+	validate_payment_date_provenance(row)
+	if getattr(row, "date_verification_status", None) != "Verified":
+		frappe.throw(_("Payment date must be verified before accounting posting."))
+	status = getattr(row, "posting_status", None) or "Draft"
+	payment_entry = getattr(row, "payment_entry", None)
+	journal_entry = getattr(row, "journal_entry", None)
+	if payment_entry and journal_entry:
+		frappe.throw(_("A payment row cannot link both a Payment Entry and a Journal Entry."))
+	if status == "Draft":
+		if payment_entry or journal_entry:
+			frappe.throw(_("A draft payment row cannot already have an accounting voucher."))
+		return status
+	if status != "Posted":
+		frappe.throw(_("Only Draft or consistently Posted payment rows can be processed."))
+	linked = payment_entry if expected_doctype == "Payment Entry" else journal_entry
+	other = journal_entry if expected_doctype == "Payment Entry" else payment_entry
+	if not linked or other or not getattr(row, "idempotency_key", None):
+		frappe.throw(_("Posted payment row accounting links are inconsistent."))
+	return status
 
 
 def add_payment_row(
@@ -105,8 +131,8 @@ def post_payment_row_receipt(
 		frappe.throw(_("Payment posting date is required."))
 	if flt(row.amount) <= 0:
 		frappe.throw(_("Payment amount must be greater than 0."))
-	if getattr(row, "date_verification_status", None) != "Verified":
-		frappe.throw(_("Payment date must be verified before accounting posting."))
+	expected_doctype = "Payment Entry" if getattr(b, "customer", None) else "Journal Entry"
+	previous_status = _validate_payment_accounting_state(row, expected_doctype=expected_doctype)
 
 	# deterministic idempotency based on the child row stable name
 	idempotency_key = row.idempotency_key or _build_idempotency_key(
@@ -114,7 +140,7 @@ def post_payment_row_receipt(
 	)
 
 	# store the key on the row for visibility and for external API callers
-	if not row.idempotency_key:
+	if not row.idempotency_key and not dry_run:
 		row.idempotency_key = idempotency_key
 
 	# Preferred: Payment Entry when Customer exists (reconciliation-friendly).
@@ -144,6 +170,11 @@ def post_payment_row_receipt(
 		)
 
 	if not dry_run:
+		if res.doctype != expected_doctype:
+			frappe.throw(_("Accounting service returned an unexpected voucher type."))
+		existing_link = row.payment_entry if expected_doctype == "Payment Entry" else row.journal_entry
+		if previous_status == "Posted" and existing_link != res.name:
+			frappe.throw(_("Idempotent posting returned a different accounting voucher."))
 		if res.doctype == "Journal Entry":
 			row.journal_entry = res.name
 			row.posting_status = "Posted"
@@ -153,6 +184,14 @@ def post_payment_row_receipt(
 
 	if not dry_run:
 		b.flags.ignore_booking_recalc = True
+		# The Booking controller permits only the narrow Draft -> Posted field
+		# transition while continuing to lock economic and evidence fields.
+		b.flags.accounting_posting_transition = {
+			"payment_row_name": payment_row_name,
+			"expected_doctype": res.doctype,
+			"voucher_name": res.name,
+			"idempotency_key": idempotency_key,
+		}
 		b.save()
 
 	return {

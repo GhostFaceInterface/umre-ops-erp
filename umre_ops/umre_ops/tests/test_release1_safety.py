@@ -56,6 +56,14 @@ class TestReleaseOnePaymentSafety(TestCase):
 			posting_date="2026-07-29",
 			amount=100,
 			date_verification_status="Verified",
+			date_source="Receipt",
+			date_evidence_reference="RECEIPT-1",
+			verified_by="Administrator",
+			verified_on="2026-07-29 12:00:00",
+			posting_status="Draft",
+			payment_entry=None,
+			journal_entry=None,
+			is_new=lambda: False,
 			currency="USD",
 			mode_of_payment="Cash",
 			reference_no=None,
@@ -78,6 +86,7 @@ class TestReleaseOnePaymentSafety(TestCase):
 		)
 
 		self.assertEqual(result["result_name"], "DRY-RUN")
+		self.assertIsNone(row.idempotency_key)
 		booking.save.assert_not_called()
 
 

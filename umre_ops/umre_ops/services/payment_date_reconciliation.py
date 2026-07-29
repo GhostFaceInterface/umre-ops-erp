@@ -65,15 +65,19 @@ def _parse_iso_date(value: str, label: str) -> str:
 	return parsed.isoformat()
 
 
-def _has_posting_event(booking_name: str, payment_row_name: str) -> bool:
+def _has_posting_event(
+	booking_name: str, payment_row_name: str, idempotency_key: str | None = None
+) -> bool:
+	base_filters = {"source_doctype": "Umre Booking", "source_name": booking_name}
+	if idempotency_key and frappe.db.exists(
+		"Umre Posting Event",
+		{**base_filters, "idempotency_key": ["in", [f"{idempotency_key}::JE", f"{idempotency_key}::PE"]]},
+	):
+		return True
 	return bool(
 		frappe.db.exists(
 			"Umre Posting Event",
-			{
-				"source_doctype": "Umre Booking",
-				"source_name": booking_name,
-				"idempotency_key": ["like", f"%::{payment_row_name}::%"],
-			},
+			{**base_filters, "idempotency_key": ["like", f"%::{payment_row_name}::%"]},
 		)
 	)
 
@@ -117,6 +121,7 @@ def _build_plan(batch_hash: str, rows: list[dict[str, str]]) -> list[dict]:
 				"journal_entry",
 				"date_verification_status",
 				"date_repair_key",
+				"idempotency_key",
 			],
 			as_dict=True,
 		)
@@ -142,7 +147,9 @@ def _build_plan(batch_hash: str, rows: list[dict[str, str]]) -> list[dict]:
 		if (current.posting_status or "Draft") != "Draft" or current.payment_entry or current.journal_entry:
 			errors.append(f"row {number}: posted or voucher-linked payment cannot be repaired")
 			continue
-		if _has_posting_event(row["booking_name"], row["payment_row_name"]):
+		if _has_posting_event(
+			row["booking_name"], row["payment_row_name"], current.idempotency_key
+		):
 			errors.append(f"row {number}: payment has an accounting posting event")
 			continue
 		plan.append(
@@ -153,6 +160,7 @@ def _build_plan(batch_hash: str, rows: list[dict[str, str]]) -> list[dict]:
 				"legacy_posting_date": current.legacy_posting_date or current_date,
 				"expected_legacy_posting_date": current.legacy_posting_date or "",
 				"expected_date_verification_status": current.date_verification_status or "",
+				"expected_idempotency_key": current.idempotency_key or "",
 				**row,
 			}
 		)
@@ -169,7 +177,7 @@ def _lock_and_revalidate(plan: list[dict]) -> None:
 		rows = frappe.db.sql(
 			"""
 			SELECT posting_date, legacy_posting_date, posting_status, payment_entry, journal_entry,
-			       date_verification_status, date_repair_key
+			       date_verification_status, date_repair_key, idempotency_key
 			FROM `tabUmre Booking Payment`
 			WHERE name = %s AND parent = %s
 			  AND parenttype = 'Umre Booking' AND parentfield = 'payments'
@@ -190,11 +198,14 @@ def _lock_and_revalidate(plan: list[dict]) -> None:
 			or current_legacy_date != item["expected_legacy_posting_date"]
 			or (current.date_verification_status or "")
 			!= item["expected_date_verification_status"]
+			or (current.idempotency_key or "") != item["expected_idempotency_key"]
 			or (current.posting_status or "Draft") != "Draft"
 			or current.payment_entry
 			or current.journal_entry
 			or current.date_repair_key
-			or _has_posting_event(item["booking_name"], item["payment_row_name"])
+			or _has_posting_event(
+				item["booking_name"], item["payment_row_name"], current.idempotency_key
+			)
 		):
 			frappe.throw(_("Payment row changed after validation; no repair was applied."))
 

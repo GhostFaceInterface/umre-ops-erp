@@ -8,7 +8,6 @@ frappe.query_reports["Payment Date Reconciliation"] = {
 			label: __("Verification Status"),
 			fieldtype: "Select",
 			options: "\nNeeds Review\nVerified\nRejected",
-			default: "Needs Review",
 		},
 		{
 			fieldname: "date_source",

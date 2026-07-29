@@ -27,15 +27,22 @@ PROTECTED_FIELDS = (
 
 
 def validate_payment_date_provenance(row) -> None:
-	if row.is_new():
-		row.date_source = row.date_source or "Manual"
-		row.date_verification_status = row.date_verification_status or "Needs Review"
-	if not row.date_source or not row.date_verification_status:
+	if getattr(row, "is_new", lambda: False)():
+		row.date_source = getattr(row, "date_source", None) or "Manual"
+		row.date_verification_status = (
+			getattr(row, "date_verification_status", None) or "Needs Review"
+		)
+	date_source = getattr(row, "date_source", None)
+	verification_status = getattr(row, "date_verification_status", None)
+	if not date_source or not verification_status:
 		frappe.throw(_("Payment date provenance is missing; run the provenance backfill first."))
-	if row.date_verification_status == "Verified":
-		if row.date_source == "Legacy":
+	if verification_status == "Verified":
+		if date_source == "Legacy":
 			frappe.throw(_("A verified payment date requires a non-legacy evidence source."))
-		if not row.verified_by or not row.verified_on or not row.date_evidence_reference:
+		if not all(
+			getattr(row, field, None)
+			for field in ("verified_by", "verified_on", "date_evidence_reference")
+		):
 			frappe.throw(_("A verified payment date requires verifier, time, and evidence reference."))
 
 

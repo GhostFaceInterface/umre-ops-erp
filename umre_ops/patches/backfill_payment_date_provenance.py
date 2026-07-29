@@ -9,22 +9,21 @@ def execute() -> None:
 	frappe.db.sql(
 		"""
 		UPDATE `tabUmre Booking Payment`
-		SET legacy_posting_date = posting_date
-		WHERE posting_date IS NOT NULL
-		  AND legacy_posting_date IS NULL
-		"""
-	)
-	frappe.db.sql(
-		"""
-		UPDATE `tabUmre Booking Payment`
-		SET date_source = 'Legacy'
-		WHERE COALESCE(date_source, '') = ''
-		"""
-	)
-	frappe.db.sql(
-		"""
-		UPDATE `tabUmre Booking Payment`
-		SET date_verification_status = 'Needs Review'
-		WHERE COALESCE(date_verification_status, '') = ''
+		SET
+			legacy_posting_date = CASE
+				WHEN posting_date IS NOT NULL AND legacy_posting_date IS NULL THEN posting_date
+				ELSE legacy_posting_date
+			END,
+			date_source = CASE
+				WHEN COALESCE(date_source, '') = '' THEN 'Legacy'
+				ELSE date_source
+			END,
+			date_verification_status = CASE
+				WHEN COALESCE(date_verification_status, '') = '' THEN 'Needs Review'
+				ELSE date_verification_status
+			END
+		WHERE (posting_date IS NOT NULL AND legacy_posting_date IS NULL)
+		   OR COALESCE(date_source, '') = ''
+		   OR COALESCE(date_verification_status, '') = ''
 		"""
 	)

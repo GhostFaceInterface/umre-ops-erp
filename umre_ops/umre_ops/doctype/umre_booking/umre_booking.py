@@ -128,8 +128,9 @@ class UmreBooking(Document):
 				frappe.throw(_("Payment dates can be verified only through the reconciliation workflow."))
 			return
 		flags = getattr(self, "flags", None)
-		if flags is not None and flags.get("ignore_posted_payment_lock"):
-			return
+		posting_transition_scope = (
+			flags.get("accounting_posting_transition") if flags is not None else None
+		) or {}
 		persisted = frappe.get_all(
 			"Umre Booking Payment",
 			filters={"parent": self.name, "parenttype": "Umre Booking", "parentfield": "payments"},
@@ -180,6 +181,28 @@ class UmreBooking(Document):
 				frappe.throw(_("Protected payment row {0} cannot be deleted.").format(row_name))
 			if abs(flt(new.amount) - flt(old.amount)) > 0.000001:
 				frappe.throw(_("Protected payment row {0} amount cannot be changed.").format(row_name))
+			posting_transition = (
+				posting_transition_scope.get("payment_row_name") == row_name
+				and old.date_verification_status == "Verified"
+				and (old.posting_status or "Draft") == "Draft"
+				and not old.journal_entry
+				and not old.payment_entry
+				and new.get("date_verification_status") == "Verified"
+				and new.get("posting_status") == "Posted"
+				and new.get("idempotency_key") == posting_transition_scope.get("idempotency_key")
+				and (
+					(
+						posting_transition_scope.get("expected_doctype") == "Journal Entry"
+						and new.get("journal_entry") == posting_transition_scope.get("voucher_name")
+						and not new.get("payment_entry")
+					)
+					or (
+						posting_transition_scope.get("expected_doctype") == "Payment Entry"
+						and new.get("payment_entry") == posting_transition_scope.get("voucher_name")
+						and not new.get("journal_entry")
+					)
+				)
+			)
 			for field in (
 				"posting_date",
 				"currency",
@@ -199,6 +222,13 @@ class UmreBooking(Document):
 				"date_repair_key",
 			):
 				if str(new.get(field) or "") != str(old.get(field) or ""):
+					if posting_transition and field in {
+						"posting_status",
+						"journal_entry",
+						"payment_entry",
+						"idempotency_key",
+					}:
+						continue
 					frappe.throw(
 						_("Protected payment row {0} field {1} cannot be changed.").format(row_name, field)
 					)
