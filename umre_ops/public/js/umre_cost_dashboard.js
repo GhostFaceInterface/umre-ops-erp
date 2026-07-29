@@ -19,6 +19,7 @@
 	const COST_COLORS = ["#ff4d4f", "#ff7a45", "#ffa940", "#36cfc9", "#597ef7", "#9254de", "#13c2c2"];
 
 	let _state = {
+		season: "",      // "" = backend selects active season
 		tour: "",        // "" = all tours
 		loading: false,
 		debounce_handle: null,
@@ -130,8 +131,10 @@
 			<div class="umre-fin-panel__header">
 				<div class="umre-fin-panel__title"><span class="dot"></span>${__("Tur Maliyeti Paneli")}</div>
 				<div class="umre-fin-panel__filter">
+					<label for="umre-fin-season">${__("Sezon")}</label>
+					<select id="umre-fin-season"></select>
 					<label for="umre-fin-tour">${__("Tur")}</label>
-					<select id="umre-fin-tour"><option value="">${__("Tüm Turlar")}</option></select>
+					<select id="umre-fin-tour"><option value="">${frappe.utils.escape_html(__("Tüm Turlar"))}</option></select>
 					<button type="button" class="umre-fin-panel__refresh" id="umre-fin-refresh">${__("Yenile")}</button>
 				</div>
 			</div>
@@ -158,6 +161,13 @@
 	}
 
 	function wire_events(panel) {
+		const seasonSel = panel.querySelector("#umre-fin-season");
+		seasonSel.addEventListener("change", function () {
+			_state.season = seasonSel.value || "";
+			_state.tour = "";
+			schedule_refresh(0);
+			schedule_season_refresh(0);
+		});
 		const sel = panel.querySelector("#umre-fin-tour");
 		sel.addEventListener("change", function () {
 			_state.tour = sel.value || "";
@@ -225,15 +235,18 @@
 	function refresh_season() {
 		const sp = document.getElementById(SEASON_PANEL_ID);
 		if (!sp) return;
+		const requestedSeason = _state.season;
 		sp.classList.add("umre-fin-loading");
 		frappe.call({
 			method: SEASON_ENDPOINT,
-			args: { filters: {} },
+			args: { filters: { season: requestedSeason, tour: _state.tour || "" } },
 			freeze: false
 		}).then((r) => {
 			sp.classList.remove("umre-fin-loading");
 			const data = r && r.message && r.message.operational_dashboard;
 			console.log("OPERATIONAL DATA", data);
+			if (requestedSeason && requestedSeason !== _state.season) return;
+			if (_state.season && data && data.active_season !== _state.season) return;
 			if (!is_valid_operational_data(data)) {
 				render_empty_operational_dashboard(sp, __("Operasyonel gider verisi eksik. Grafik çizilmeyecek."));
 				return;
@@ -272,11 +285,11 @@
 		const items = data.by_expense_item || [];
 		const trend = data.monthly_trend || [];
 		const total = Number(data.total_expense_usd || 0);
-		const activeSeason = data.active_season || "";
+		const selectedSeason = data.active_season || "";
 
 		const hero = sp.querySelector("#umre-season-total");
 		hero.innerHTML = [
-			hero_cell("cost", __("Toplam Gider"), fmt_money(total, "USD"), activeSeason ? __("Aktif Sezon") + ": " + activeSeason : "")
+			hero_cell("cost", __("Toplam Gider"), fmt_money(total, "USD"), selectedSeason ? __("Sezon") + ": " + selectedSeason : "")
 		].join("");
 
 		const cards = sp.querySelector("#umre-season-cards");
@@ -345,18 +358,21 @@
 	function refresh() {
 		const panel = document.getElementById(PANEL_ID);
 		if (!panel) return;
+		const requestedSeason = _state.season;
 		_state.loading = true;
 		panel.classList.add("umre-fin-loading");
 
 		frappe.call({
 			method: ENDPOINT,
-			args: { tour: _state.tour || "", _: Date.now() },
+			args: { season: requestedSeason, tour: _state.tour || "", _: Date.now() },
 			freeze: false
 		}).then((r) => {
 			_state.loading = false;
 			panel.classList.remove("umre-fin-loading");
 			const data = r && r.message;
 			console.log("DASHBOARD DATA", data);
+			if (requestedSeason && requestedSeason !== _state.season) return;
+			if (_state.season && data && data.selected_season !== _state.season) return;
 			if (!is_valid_dashboard_data(data)) {
 				render_empty_dashboard(panel, __("Dashboard verisi eksik veya boş. Maliyet bileşenleri oluşmadan grafik çizilemez."));
 				return;
@@ -376,9 +392,10 @@
 			data &&
 			data.kpis &&
 			Array.isArray(data.cost_breakdown) &&
-			data.cost_breakdown.length &&
 			data.performance &&
-			data.meta
+			data.meta &&
+			Array.isArray(data.seasons) &&
+			Array.isArray(data.tours)
 		);
 	}
 
@@ -400,12 +417,19 @@
 		const perf = p.performance || {};
 		const meta = p.meta || {};
 		const currency = p.currency || "USD";
+		_state.season = p.selected_season || "";
+
+		const seasonSel = panel.querySelector("#umre-fin-season");
+		seasonSel.innerHTML = (p.seasons || []).map((season) => (
+			`<option value="${frappe.utils.escape_html(season.name || "")}">${frappe.utils.escape_html(season.label || season.name || "")}</option>`
+		)).join("");
+		seasonSel.value = _state.season;
 
 		// Tour selector population (preserve current selection).
 		const sel = panel.querySelector("#umre-fin-tour");
 		const current = _state.tour;
-		const opts = [`<option value="">${__("Tüm Turlar")}</option>`].concat(
-			(p.tours || []).map((t) => `<option value="${frappe.utils.escape_html(t.name)}">${frappe.utils.escape_html(t.label)}</option>`)
+		const opts = [`<option value="">${frappe.utils.escape_html(__("Tüm Turlar"))}</option>`].concat(
+			(p.tours || []).map((t) => `<option value="${frappe.utils.escape_html(t.name || "")}">${frappe.utils.escape_html(t.label || t.name || "")}</option>`)
 		);
 		sel.innerHTML = opts.join("");
 		sel.value = current;

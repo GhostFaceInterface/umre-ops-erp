@@ -469,6 +469,6 @@ def get_operational_dashboard_data(filters: dict[str, Any] | str | None = None) 
 	filters = normalize_filters(filters)
 	tour = filters.get("tour")
 	return {
-		"tour_dashboard": get_tour_cost_breakdown(tour=tour),
+		"tour_dashboard": get_tour_cost_breakdown(season=filters.get("season"), tour=tour),
 		"operational_dashboard": get_operational_dashboard_summary(filters),
 	}

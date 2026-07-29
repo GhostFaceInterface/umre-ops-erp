@@ -20,3 +20,4 @@ umre_ops.patches.restore_excel_truth
 umre_ops.patches.backfill_cost_components
 umre_ops.patches.sync_tour_diyanet_rule_para_birimi
 umre_ops.patches.backfill_payment_date_provenance
+umre_ops.patches.backfill_umre_tour_season

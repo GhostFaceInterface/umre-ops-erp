@@ -5,7 +5,7 @@ Financial dashboard aggregation service.
 
 Public, whitelisted entry point:
 
-    get_tour_cost_breakdown(tour: str | None = None) -> dict
+    get_tour_cost_breakdown(season: str | None = None, tour: str | None = None) -> dict
 
 Returns the strict data contract for the Umre Operasyon Paneli dashboard:
 
@@ -43,6 +43,7 @@ from frappe.utils import flt
 
 from umre_ops.umre_ops.services.expense_service import get_operational_dashboard_summary
 from umre_ops.umre_ops.services.permission_service import require_doctype_permission
+from umre_ops.umre_ops.services.season_service import get_active_season
 
 CURRENCY = "USD"
 
@@ -58,11 +59,23 @@ CHART_HEX_BY_CODE: dict[str, str] = {
 }
 
 
-def _list_tour_options() -> list[dict[str, str]]:
+def _list_season_options() -> list[dict[str, str]]:
+	rows = frappe.get_all(
+		"Umre Season",
+		fields=["name", "season_name"],
+		order_by="start_date desc, modified desc",
+		limit_page_length=0,
+	)
+	return [{"name": r["name"], "label": r.get("season_name") or r["name"]} for r in rows]
+
+
+def _list_tour_options(season: str) -> list[dict[str, str]]:
 	rows = frappe.get_all(
 		"Umre Tour",
+		filters={"season": season},
 		fields=["name", "tur_adi", "tur_kodu"],
 		order_by="modified desc",
+		limit_page_length=0,
 	)
 	return [
 		{"name": r["name"], "label": r.get("tur_adi") or r["name"]}
@@ -70,23 +83,24 @@ def _list_tour_options() -> list[dict[str, str]]:
 	]
 
 
-def _booking_metrics(tour: str | None) -> dict[str, float]:
+def _booking_metrics(season: str, tour: str | None) -> dict[str, float]:
 	"""Single SQL: per-tour or all-tours booking-side aggregates."""
-	where = "WHERE 1=1"
-	params: dict[str, Any] = {}
+	where = "WHERE t.season = %(season)s"
+	params: dict[str, Any] = {"season": season}
 	if tour:
-		where += " AND tur = %(tour)s"
+		where += " AND b.tur = %(tour)s"
 		params["tour"] = tour
 
 	row = frappe.db.sql(
 		f"""
 		SELECT
-		  COUNT(*)                                           AS kisi_sayisi,
-		  SUM(CASE WHEN statu = 'UMRECI' THEN 1 ELSE 0 END)  AS umreci_count,
-		  SUM(CASE WHEN statu <> 'UMRECI' THEN 1 ELSE 0 END) AS non_umreci_count,
-		  SUM(CASE WHEN statu = 'UMRECI' THEN ucret  ELSE 0 END) AS gelir,
-		  SUM(CASE WHEN statu = 'UMRECI' THEN odenen ELSE 0 END) AS tahsil_edilen
-		FROM `tabUmre Booking`
+		  COUNT(*)                                               AS kisi_sayisi,
+		  SUM(CASE WHEN b.statu = 'UMRECI' THEN 1 ELSE 0 END)     AS umreci_count,
+		  SUM(CASE WHEN b.statu <> 'UMRECI' THEN 1 ELSE 0 END)    AS non_umreci_count,
+		  SUM(CASE WHEN b.statu = 'UMRECI' THEN b.ucret ELSE 0 END) AS gelir,
+		  SUM(CASE WHEN b.statu = 'UMRECI' THEN b.odenen ELSE 0 END) AS tahsil_edilen
+		FROM `tabUmre Booking` b
+		JOIN `tabUmre Tour` t ON t.name = b.tur
 		{where}
 		""",
 		params,
@@ -103,11 +117,12 @@ def _booking_metrics(tour: str | None) -> dict[str, float]:
 
 
 def _component_rollup(
+	season: str,
 	tour: str | None,
 ) -> tuple[dict[str, float], list[dict[str, Any]]]:
 	"""One SQL: amounts per ``cost_type`` with ``Cost Type`` sort + label."""
-	where = "WHERE 1=1"
-	params: dict[str, Any] = {}
+	where = "WHERE t.season = %(season)s"
+	params: dict[str, Any] = {"season": season}
 	if tour:
 		where += " AND b.tur = %(tour)s"
 		params["tour"] = tour
@@ -121,6 +136,7 @@ def _component_rollup(
 			MIN(IFNULL(ct.cost_type_name, c.cost_type)) AS type_label
 		FROM `tabCost Component` c
 		JOIN `tabUmre Booking` b ON b.name = c.booking
+		JOIN `tabUmre Tour` t ON t.name = b.tur
 		LEFT JOIN `tabCost Type` ct ON ct.name = c.cost_type
 		{where}
 		GROUP BY c.cost_type
@@ -154,19 +170,31 @@ def cintish(v: Any) -> int:
 
 
 @frappe.whitelist()
-def get_tour_cost_breakdown(tour: str | None = None) -> dict[str, Any]:
+def get_tour_cost_breakdown(
+	season: str | None = None,
+	tour: str | None = None,
+) -> dict[str, Any]:
 	"""Return the strict payload feeding the custom financial dashboard.
 
-	`tour` is optional. When omitted (or empty), the breakdown aggregates
-	across every tour in the database — i.e. the company-wide view a manager
-	wants when they open the Operasyon Paneli.
+	An empty ``season`` selects the active season. An empty ``tour`` aggregates
+	only the tours belonging to that selected season.
 	"""
 	require_doctype_permission("Umre Booking", "read")
-	# Empty-string fallback (Frappe URL params come through as "").
+	require_doctype_permission("Umre Tour", "read")
+	require_doctype_permission("Umre Season", "read")
+	season = (season or "").strip() or get_active_season(required=True)
 	tour = (tour or "").strip() or None
+	if not frappe.db.exists("Umre Season", season):
+		frappe.throw(_("Sezon bulunamadı: {0}").format(season))  # noqa: RUF001
+	if tour:
+		tour_row = frappe.db.get_value("Umre Tour", tour, ["name", "season"], as_dict=True)
+		if not tour_row:
+			frappe.throw(_("Tur bulunamadı: {0}").format(tour))  # noqa: RUF001
+		if tour_row.get("season") != season:
+			frappe.throw(_("Seçilen tur {0} sezonuna ait değil.").format(season))
 
-	booking = _booking_metrics(tour)
-	components, ordered_rows = _component_rollup(tour)
+	booking = _booking_metrics(season, tour)
+	components, ordered_rows = _component_rollup(season, tour)
 	total_cost = flt(sum(components.values()), 2)
 	total_revenue = flt(booking["gelir"], 2)
 	net_profit = flt(total_revenue - total_cost, 2)
@@ -183,6 +211,11 @@ def get_tour_cost_breakdown(tour: str | None = None) -> dict[str, Any]:
 	]
 
 	return {
+		"currency": CURRENCY,
+		"selected_season": season,
+		"active_season": get_active_season(),
+		"seasons": _list_season_options(),
+		"tours": _list_tour_options(season),
 		"kpis": {
 			"total_revenue": total_revenue,
 			"total_cost": total_cost,
@@ -218,7 +251,7 @@ def _bucket_for_operational_category(category_name: str | None) -> str:
 			"internet",
 			"bilişim",
 			"bilisim",
-			"yemek - gıda",
+			"yemek - gıda",  # noqa: RUF001
 			"yemek - gida",
 		)
 	) or n.strip() == "su":
@@ -381,7 +414,10 @@ def get_operational_dashboard_data(filters: dict[str, Any] | str | None = None) 
 	require_doctype_permission("Operational Expense", "read")
 	filters = normalize_filters(filters)
 	return {
-		"tour_dashboard": get_tour_cost_breakdown(tour=filters.get("tour")),
+		"tour_dashboard": get_tour_cost_breakdown(
+			season=filters.get("season"),
+			tour=filters.get("tour"),
+		),
 		"operational_dashboard": get_operational_dashboard_summary(filters),
 	}
 

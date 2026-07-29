@@ -11,6 +11,7 @@
   "tur_adi",
   "umre_tipi",
   "durum",
+  "season",
   "baslangic_tarihi",
   "bitis_tarihi",
   "kontenjan",
@@ -57,6 +58,15 @@
    "in_list_view": 1,
    "label": "Durum",
    "options": "Taslak\nAktif\nKapandı\nİptal\nTamamlandı",
+   "reqd": 1
+  },
+  {
+   "fieldname": "season",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Sezon",
+   "options": "Umre Season",
    "reqd": 1
   },
   {
