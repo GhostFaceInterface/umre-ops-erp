@@ -1,0 +1,4 @@
+interface:
+  display_name: "Umre Ops Orchestrator"
+  short_description: "Umre Ops için düşük-tokenlı ajan orkestrasyonu"
+  default_prompt: "Use $orchestrate-umre-ops to audit this Umre Ops change with the smallest useful agent team."

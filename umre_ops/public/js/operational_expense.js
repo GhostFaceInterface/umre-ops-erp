@@ -18,7 +18,19 @@ frappe.ui.form.on("Operational Expense", {
 		preview_usd(frm);
 	},
 	money_account(frm) {
-		preview_usd(frm);
+		if (frm.doc.money_account) {
+			frappe.db.get_value("Umre Money Account", frm.doc.money_account, ["currency", "institution"], (r) => {
+				if (r) {
+					frm.set_value("currency", r.currency);
+					frm.set_value("financial_institution", r.institution);
+					preview_usd(frm);
+				}
+			});
+		} else {
+			frm.set_value("currency", "");
+			frm.set_value("financial_institution", "");
+			preview_usd(frm);
+		}
 	},
 	refresh(frm) {
 		default_active_season(frm);
@@ -46,9 +58,16 @@ function preview_usd(frm) {
 		frm.set_value("usd_amount", amt);
 		return;
 	}
+	if (frm.doc.usd_exchange_rate === 1) {
+		frm.set_value("usd_exchange_rate", "");
+		frm.set_value("usd_amount", 0);
+		return;
+	}
 	const rate = frappe.utils.flt(frm.doc.usd_exchange_rate);
 	if (rate > 0) {
 		frm.set_value("usd_amount", amt / rate);
+	} else {
+		frm.set_value("usd_amount", 0);
 	}
 }
 

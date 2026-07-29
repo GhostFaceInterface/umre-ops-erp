@@ -41,9 +41,10 @@ if docker exec erpnext-prod-backend-1 test -L /home/frappe/frappe-bench/sites/as
     docker exec erpnext-prod-backend-1 cp -r /home/frappe/frappe-bench/apps/frappe/frappe/public /home/frappe/frappe-bench/sites/assets/frappe
     docker exec erpnext-prod-backend-1 rm -f /home/frappe/frappe-bench/sites/assets/erpnext
     docker exec erpnext-prod-backend-1 cp -r /home/frappe/frappe-bench/apps/erpnext/erpnext/public /home/frappe/frappe-bench/sites/assets/erpnext
-    docker exec erpnext-prod-backend-1 rm -f /home/frappe/frappe-bench/sites/assets/umre_ops
-    docker exec erpnext-prod-backend-1 cp -r /home/frappe/frappe-bench/apps/umre_ops/umre_ops/public /home/frappe/frappe-bench/sites/assets/umre_ops
 fi
+# Her zaman umre_ops asset'lerini güncelle ki kod değişiklikleri anında yansısın
+docker exec erpnext-prod-backend-1 rm -rf /home/frappe/frappe-bench/sites/assets/umre_ops
+docker exec erpnext-prod-backend-1 cp -r /home/frappe/frappe-bench/apps/umre_ops/umre_ops/public /home/frappe/frappe-bench/sites/assets/umre_ops
 
 # 3. Nginx / Frontend servisinin hazır olmasını bekle
 echo -n "Servislerin hazır olması bekleniyor"
