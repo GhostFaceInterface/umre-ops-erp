@@ -9,6 +9,9 @@ from frappe.exceptions import PermissionError
 from frappe.model.document import Document
 from frappe.utils import flt
 
+from umre_ops.umre_ops.doctype.umre_booking_payment.umre_booking_payment import (
+	validate_payment_date_provenance,
+)
 from umre_ops.umre_ops.services import cost_engine
 from umre_ops.umre_ops.services.booking_calculation_service import (
 	apply_to_booking,
@@ -20,6 +23,8 @@ class UmreBooking(Document):
 	"""Recomputes list price, cost components, totals, and margin on every save."""
 
 	def validate(self) -> None:
+		for payment in self.get("payments") or []:
+			validate_payment_date_provenance(payment)
 		# 1) Hard immutability gate. If `locked_financials` is set we forbid ANY
 		#    change to `statu`, `ucret`, or `manual_cost` from this point on.
 		#    Bypass is intentional and explicit via `flags.ignore_financial_lock`
@@ -117,6 +122,10 @@ class UmreBooking(Document):
 	def _enforce_posted_payment_lock(self) -> None:
 		"""Do not allow a submitted accounting voucher's source row to drift."""
 		if self.is_new():
+			if any(
+				row.get("date_verification_status") == "Verified" for row in self.get("payments") or []
+			):
+				frappe.throw(_("Payment dates can be verified only through the reconciliation workflow."))
 			return
 		flags = getattr(self, "flags", None)
 		if flags is not None and flags.get("ignore_posted_payment_lock"):
@@ -136,23 +145,41 @@ class UmreBooking(Document):
 				"journal_entry",
 				"payment_entry",
 				"idempotency_key",
+				"legacy_posting_date",
+				"date_source",
+				"date_verification_status",
+				"date_evidence_reference",
+				"verified_by",
+				"verified_on",
+				"date_repair_key",
 			],
 			limit_page_length=0,
 		)
 		protected = {
 			row.name: row
 			for row in persisted
-			if row.posting_status == "Posted" or row.journal_entry or row.payment_entry
+			if row.posting_status == "Posted"
+			or row.journal_entry
+			or row.payment_entry
+			or row.date_verification_status == "Verified"
+			or row.date_repair_key
 		}
 		if not protected:
 			return
 		current = {row.name: row for row in self.get("payments") or [] if row.name}
+		persisted_by_name = {row.name: row for row in persisted}
+		for row in self.get("payments") or []:
+			old = persisted_by_name.get(row.name)
+			if row.get("date_verification_status") == "Verified" and (
+				not old or old.date_verification_status != "Verified"
+			):
+				frappe.throw(_("Payment dates can be verified only through the reconciliation workflow."))
 		for row_name, old in protected.items():
 			new = current.get(row_name)
 			if not new:
-				frappe.throw(_("Posted payment row {0} cannot be deleted.").format(row_name))
+				frappe.throw(_("Protected payment row {0} cannot be deleted.").format(row_name))
 			if abs(flt(new.amount) - flt(old.amount)) > 0.000001:
-				frappe.throw(_("Posted payment row {0} amount cannot be changed.").format(row_name))
+				frappe.throw(_("Protected payment row {0} amount cannot be changed.").format(row_name))
 			for field in (
 				"posting_date",
 				"currency",
@@ -163,10 +190,17 @@ class UmreBooking(Document):
 				"journal_entry",
 				"payment_entry",
 				"idempotency_key",
+				"legacy_posting_date",
+				"date_source",
+				"date_verification_status",
+				"date_evidence_reference",
+				"verified_by",
+				"verified_on",
+				"date_repair_key",
 			):
 				if str(new.get(field) or "") != str(old.get(field) or ""):
 					frappe.throw(
-						_("Posted payment row {0} field {1} cannot be changed.").format(row_name, field)
+						_("Protected payment row {0} field {1} cannot be changed.").format(row_name, field)
 					)
 
 

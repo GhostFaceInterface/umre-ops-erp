@@ -72,6 +72,8 @@ def add_payment_row(
 			"reference_date": reference_date,
 			"remarks": remarks,
 			"external_reference": external_reference,
+			"date_source": "Manual",
+			"date_verification_status": "Needs Review",
 			"posting_status": "Draft",
 		},
 	)
@@ -103,6 +105,8 @@ def post_payment_row_receipt(
 		frappe.throw(_("Payment posting date is required."))
 	if flt(row.amount) <= 0:
 		frappe.throw(_("Payment amount must be greater than 0."))
+	if getattr(row, "date_verification_status", None) != "Verified":
+		frappe.throw(_("Payment date must be verified before accounting posting."))
 
 	# deterministic idempotency based on the child row stable name
 	idempotency_key = row.idempotency_key or _build_idempotency_key(

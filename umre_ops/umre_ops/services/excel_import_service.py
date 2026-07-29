@@ -382,15 +382,30 @@ def _upsert_payment_row(booking, row: dict[str, Any], import_name: str, row_numb
 	for payment in booking.get("payments") or []:
 		if payment.idempotency_key == key:
 			is_posted = payment.posting_status == "Posted" or payment.payment_entry or payment.journal_entry
+			is_verified = getattr(payment, "date_verification_status", None) == "Verified"
 			if is_posted:
 				same_amount = abs(flt(payment.amount) - amount) <= 0.000001
 				same_date = parse_date(payment.posting_date) == payment_date
 				if not same_amount or not same_date:
 					frappe.throw(_("A posted payment cannot be changed by Excel import."))
 				return "unchanged_posted"
+			if is_verified:
+				same_amount = abs(flt(payment.amount) - amount) <= 0.000001
+				same_date = parse_date(payment.posting_date) == payment_date
+				if not same_amount or not same_date:
+					frappe.throw(_("A verified payment cannot be changed by Excel import."))
+				return "unchanged_verified"
+			if not getattr(payment, "legacy_posting_date", None):
+				payment.legacy_posting_date = payment.posting_date
 			payment.amount = amount
 			payment.posting_date = payment_date
 			payment.external_reference = import_name
+			payment.date_source = "Excel"
+			payment.date_verification_status = "Needs Review"
+			payment.date_evidence_reference = import_name
+			payment.verified_by = None
+			payment.verified_on = None
+			payment.date_repair_key = None
 			payment.remarks = f"Excel import {import_name} row {row_number}"
 			return "updated"
 	booking.append(
@@ -400,6 +415,9 @@ def _upsert_payment_row(booking, row: dict[str, Any], import_name: str, row_numb
 			"amount": amount,
 			"currency": frappe.db.get_value("Umre Tour", booking.tur, "para_birimi"),
 			"external_reference": import_name,
+			"date_source": "Excel",
+			"date_verification_status": "Needs Review",
+			"date_evidence_reference": import_name,
 			"idempotency_key": key,
 			"posting_status": "Draft",
 			"remarks": f"Excel import {import_name} row {row_number}",

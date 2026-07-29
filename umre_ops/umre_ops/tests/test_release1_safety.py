@@ -55,6 +55,7 @@ class TestReleaseOnePaymentSafety(TestCase):
 			idempotency_key=None,
 			posting_date="2026-07-29",
 			amount=100,
+			date_verification_status="Verified",
 			currency="USD",
 			mode_of_payment="Cash",
 			reference_no=None,

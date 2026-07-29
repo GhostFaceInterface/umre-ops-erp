@@ -6,6 +6,13 @@
  "engine": "InnoDB",
  "field_order": [
   "posting_date",
+  "legacy_posting_date",
+  "date_source",
+  "date_verification_status",
+  "date_evidence_reference",
+  "verified_by",
+  "verified_on",
+  "date_repair_key",
   "amount",
   "currency",
   "mode_of_payment",
@@ -24,6 +31,51 @@
    "fieldtype": "Date",
    "label": "İşlem Tarihi",
    "reqd": 1
+  },
+  {
+   "fieldname": "legacy_posting_date",
+   "fieldtype": "Date",
+   "label": "Önceki İşlem Tarihi",
+   "read_only": 1
+  },
+  {
+   "fieldname": "date_source",
+   "fieldtype": "Select",
+   "label": "Tarih Kaynağı",
+   "options": "Legacy\nBank\nReceipt\nExcel\nManual",
+   "read_only": 1
+  },
+  {
+   "fieldname": "date_verification_status",
+   "fieldtype": "Select",
+   "label": "Tarih Doğrulama Durumu",
+   "options": "Needs Review\nVerified\nRejected",
+   "read_only": 1
+  },
+  {
+   "fieldname": "date_evidence_reference",
+   "fieldtype": "Data",
+   "label": "Tarih Kanıt Referansı",
+   "read_only": 1
+  },
+  {
+   "fieldname": "verified_by",
+   "fieldtype": "Link",
+   "label": "Doğrulayan",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "verified_on",
+   "fieldtype": "Datetime",
+   "label": "Doğrulama Zamanı",
+   "read_only": 1
+  },
+  {
+   "fieldname": "date_repair_key",
+   "fieldtype": "Data",
+   "label": "Tarih Onarım Anahtarı",
+   "read_only": 1
   },
   {
    "fieldname": "amount",
