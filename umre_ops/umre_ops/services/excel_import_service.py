@@ -3,21 +3,26 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import unicodedata
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
+from io import BytesIO
 from typing import Any
+from uuid import uuid4
 
 import frappe
 from frappe import _
 from frappe.utils import flt, getdate, now
-from frappe.utils.xlsxutils import read_xlsx_file_from_attached_file
+from frappe.utils.background_jobs import is_job_enqueued
+from openpyxl import load_workbook
 
 DOCTYPE_IMPORT = "Umre Excel Import"
 DOCTYPE_UMRECI = "Umreci"
 DOCTYPE_BOOKING = "Umre Booking"
+RETRYABLE_IMPORT_ERRORS = (frappe.db.InternalError, frappe.RetryBackgroundJobError)
 DOCTYPE_REFERRAL = "Referral Source"
 
 REQUIRED_COLUMNS = (
@@ -167,6 +172,38 @@ class ImportSummary:
 	row_errors: int = 0
 
 
+@dataclass(frozen=True)
+class ImportSourceSnapshot:
+	status: str
+	import_file: str | None
+	target_tour: str | None
+	worksheet_name: str | None
+
+
+def make_source_snapshot(import_doc) -> ImportSourceSnapshot:
+	return ImportSourceSnapshot(
+		status=import_doc.status,
+		import_file=import_doc.import_file,
+		target_tour=import_doc.target_tour,
+		worksheet_name=import_doc.worksheet_name,
+	)
+
+
+def validate_dry_run_snapshot(snapshot: ImportSourceSnapshot, current_doc) -> None:
+	if current_doc.status in {"Queued", "Processing", "Completed"}:
+		frappe.throw(_("Bu aktarımın durumu değişti; kuru çalıştırma sonucu kaydedilmedi."))
+	if make_source_snapshot(current_doc) != snapshot:
+		frappe.throw(
+			_(
+				"Dosya, hedef tur, Excel sayfası veya durum kuru çalıştırma sırasında değişti; sonuç kaydedilmedi."
+			)
+		)
+
+
+def attempt_can_run(current_doc, attempt_id: str) -> bool:
+	return current_doc.job_id == attempt_id and current_doc.status in {"Queued", "Processing"}
+
+
 def header_key(value: Any) -> str:
 	text = "" if value is None else str(value)
 	text = re.sub(r"\s+", " ", text).strip()
@@ -232,7 +269,11 @@ def safe_float(value: Any) -> float:
 	if is_blank(value):
 		return 0.0
 	if isinstance(value, str):
-		value = value.replace(".", "").replace(",", ".") if re.match(r"^-?\d{1,3}(\.\d{3})*,\d+$", value.strip()) else value.replace(",", ".")
+		value = (
+			value.replace(".", "").replace(",", ".")
+			if re.match(r"^-?\d{1,3}(\.\d{3})*,\d+$", value.strip())
+			else value.replace(",", ".")
+		)
 	return flt(value)
 
 
@@ -274,10 +315,87 @@ def _alias_lookup() -> dict[str, str]:
 	return lookup
 
 
-def _read_rows(import_doc) -> tuple[list[str], list[dict[str, Any]]]:
-	raw_rows = read_xlsx_file_from_attached_file(file_url=import_doc.import_file)
+def _get_import_file(import_doc):
+	file_name = frappe.db.get_value("File", {"file_url": import_doc.import_file}, "name")
+	if not file_name:
+		frappe.throw(_("Yüklenen Excel dosyası bulunamadı."))
+	file_doc = frappe.get_doc("File", file_name)
+	file_doc.check_permission("read")
+	return file_doc
+
+
+def _get_file_content(import_doc) -> bytes:
+	content = _get_import_file(import_doc).get_content()
+	if isinstance(content, str):
+		content = content.encode()
+	return bytes(content)
+
+
+def _open_workbook(content: bytes):
+	try:
+		return load_workbook(BytesIO(content), read_only=True, data_only=True, keep_links=False)
+	except Exception:
+		frappe.throw(_("Excel dosyası okunamadı. Geçerli bir .xlsx dosyası yükleyin."))
+
+
+def _worksheet_names_from_content(content: bytes) -> list[str]:
+	workbook = _open_workbook(content)
+	try:
+		return list(workbook.sheetnames)
+	finally:
+		workbook.close()
+
+
+def get_worksheet_names(import_doc) -> list[str]:
+	return _worksheet_names_from_content(_get_file_content(import_doc))
+
+
+def _read_selected_worksheet(content: bytes, worksheet_name: str | None) -> list[list[Any]]:
+	workbook = _open_workbook(content)
+	try:
+		sheet_names = list(workbook.sheetnames)
+		if not sheet_names:
+			frappe.throw(_("Excel dosyasında çalışma sayfası bulunamadı."))
+		if not worksheet_name:
+			if len(sheet_names) > 1:
+				frappe.throw(
+					_("Excel dosyasında birden fazla sayfa var. Lütfen içe aktarılacak sayfayı seçin.")
+				)
+			worksheet_name = sheet_names[0]
+		if worksheet_name not in sheet_names:
+			frappe.throw(_("Seçilen Excel sayfası dosyada bulunamadı: {0}").format(worksheet_name))
+		worksheet = workbook[worksheet_name]
+		return [list(row) for row in worksheet.iter_rows(values_only=True)]
+	finally:
+		workbook.close()
+
+
+def build_validation_signature(import_doc, content: bytes | None = None) -> str:
+	content = content if content is not None else _get_file_content(import_doc)
+	payload = {
+		"content_hash": hashlib.sha256(content).hexdigest(),
+		"target_tour": import_doc.target_tour or "",
+		"worksheet_name": import_doc.worksheet_name or "",
+	}
+	return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+
+
+def verify_validation_signature(import_doc, content: bytes | None = None) -> None:
+	if not import_doc.validation_signature:
+		frappe.throw(_("Kayıtlı doğrulama bilgisi bulunamadı. Lütfen kuru çalıştırmayı yeniden yapın."))
+	if import_doc.validation_signature != build_validation_signature(import_doc, content):
+		frappe.throw(
+			_(
+				"Dosya, hedef tur veya Excel sayfası doğrulamadan sonra değişti. Lütfen kuru çalıştırmayı yeniden yapın."
+			)
+		)
+
+
+def _read_rows(import_doc, content: bytes | None = None) -> tuple[list[str], list[dict[str, Any]]]:
+	content = content if content is not None else _get_file_content(import_doc)
+	raw_rows = _read_selected_worksheet(content, import_doc.worksheet_name)
 	if not raw_rows:
-		frappe.throw(_("Excel file is empty."))
+		frappe.throw(_("Seçilen Excel sayfası boş."))
 
 	header = raw_rows[0]
 	lookup = _alias_lookup()
@@ -305,14 +423,44 @@ def _read_rows(import_doc) -> tuple[list[str], list[dict[str, Any]]]:
 	return list(index_by_logical), rows
 
 
-def _update_import_doc(docname: str, summary: ImportSummary, row_log: list[dict], status: str, error_log: str | None = None) -> None:
+def _update_import_doc(
+	docname: str,
+	summary: ImportSummary,
+	row_log: list[dict],
+	status: str,
+	error_log: str | None = None,
+	validation_signature: str | None = None,
+	worksheet_name: str | None = None,
+	dry_run_snapshot: ImportSourceSnapshot | None = None,
+) -> None:
+	if dry_run_snapshot is not None:
+		current = frappe.db.sql(
+			"""
+			select status, import_file, target_tour, worksheet_name
+			from `tabUmre Excel Import`
+			where name = %s
+			for update
+			""",
+			docname,
+			as_dict=True,
+		)
+		if not current:
+			frappe.throw(_("İçe aktarım kaydı bulunamadı; kuru çalıştırma sonucu kaydedilmedi."))
+		validate_dry_run_snapshot(dry_run_snapshot, current[0])
 	doc = frappe.get_doc(DOCTYPE_IMPORT, docname)
+	doc.flags.ignore_import_source_guard = True
 	doc.status = status
 	for field, value in asdict(summary).items():
 		doc.set(field, value)
 	doc.row_log = json.dumps(row_log, ensure_ascii=False, indent=2)
-	doc.dry_run_result = json.dumps({"summary": asdict(summary), "rows": row_log}, ensure_ascii=False, indent=2)
+	doc.dry_run_result = json.dumps(
+		{"summary": asdict(summary), "rows": row_log}, ensure_ascii=False, indent=2
+	)
 	doc.error_log = error_log
+	if validation_signature is not None:
+		doc.validation_signature = validation_signature
+	if worksheet_name is not None:
+		doc.worksheet_name = worksheet_name
 	if status in {"Completed", "Failed", "Validated"}:
 		doc.completed_at = now()
 	doc.save(ignore_permissions=True)
@@ -426,7 +574,14 @@ def _upsert_payment_row(booking, row: dict[str, Any], import_name: str, row_numb
 	return "created"
 
 
-def _process_row(row: dict[str, Any], tur_name: str, summary: ImportSummary, row_number: int, dry_run: bool, import_name: str) -> dict[str, Any]:
+def _process_row(
+	row: dict[str, Any],
+	tur_name: str,
+	summary: ImportSummary,
+	row_number: int,
+	dry_run: bool,
+	import_name: str,
+) -> dict[str, Any]:
 	tc = normalize_tc(row.get("TC KİMLİK NO"))
 	if not tc:
 		frappe.throw(_("Missing TC KİMLİK NO"))
@@ -499,10 +654,20 @@ def _process_row(row: dict[str, Any], tur_name: str, summary: ImportSummary, row
 def run_import(docname: str, *, dry_run: bool) -> dict:
 	import_doc = frappe.get_doc(DOCTYPE_IMPORT, docname)
 	import_doc.check_permission("write")
+	dry_run_snapshot = make_source_snapshot(import_doc) if dry_run else None
+	if dry_run and import_doc.status in {"Queued", "Processing", "Completed"}:
+		frappe.throw(_("Bu durumda kuru çalıştırma yapılamaz. Yeni bir içe aktarım kaydı oluşturun."))
 	if not frappe.db.exists("Umre Tour", import_doc.target_tour):
 		frappe.throw(_("Target Umre Tour does not exist."))
 
-	_discovered_columns, rows = _read_rows(import_doc)
+	content = _get_file_content(import_doc)
+	if dry_run and not import_doc.worksheet_name:
+		sheet_names = _worksheet_names_from_content(content)
+		if len(sheet_names) == 1:
+			import_doc.worksheet_name = sheet_names[0]
+	if not dry_run:
+		verify_validation_signature(import_doc, content)
+	_discovered_columns, rows = _read_rows(import_doc, content)
 	summary = ImportSummary(total_rows=len(rows))
 	row_log = []
 
@@ -527,7 +692,16 @@ def run_import(docname: str, *, dry_run: bool) -> dict:
 			)
 
 	status = "Failed" if summary.row_errors else ("Validated" if dry_run else "Completed")
-	_update_import_doc(docname, summary, row_log, status)
+	validation_signature = build_validation_signature(import_doc, content) if dry_run else None
+	_update_import_doc(
+		docname,
+		summary,
+		row_log,
+		status,
+		validation_signature=validation_signature,
+		worksheet_name=import_doc.worksheet_name if dry_run else None,
+		dry_run_snapshot=dry_run_snapshot,
+	)
 	return {"summary": asdict(summary), "rows": row_log}
 
 
@@ -535,44 +709,88 @@ def run_dry_run(docname: str) -> dict:
 	return run_import(docname, dry_run=True)
 
 
-def run_import_job(docname: str, user: str | None = None) -> None:
+def _mark_failed_attempt(docname: str, attempt_id: str, error_log: str) -> None:
+	frappe.db.sql("select name from `tabUmre Excel Import` where name = %s for update", docname)
+	current = frappe.get_doc(DOCTYPE_IMPORT, docname)
+	if not attempt_can_run(current, attempt_id):
+		frappe.db.rollback()
+		return
+	summary = ImportSummary(
+		total_rows=current.total_rows or 0,
+		created_umreci=current.created_umreci or 0,
+		updated_umreci=current.updated_umreci or 0,
+		created_bookings=current.created_bookings or 0,
+		updated_bookings=current.updated_bookings or 0,
+		row_errors=(current.row_errors or 0) + 1,
+	)
+	_update_import_doc(docname, summary, [], "Failed", error_log=error_log)
+
+
+def run_import_job(docname: str, attempt_id: str, user: str | None = None) -> None:
 	if user:
 		frappe.set_user(user)
-	doc = frappe.get_doc(DOCTYPE_IMPORT, docname)
-	doc.status = "Processing"
-	doc.started_at = now()
-	doc.completed_at = None
-	doc.error_log = None
-	doc.save(ignore_permissions=True)
-	frappe.db.commit()
 	try:
+		frappe.db.sql("select name from `tabUmre Excel Import` where name = %s for update", docname)
+		doc = frappe.get_doc(DOCTYPE_IMPORT, docname)
+		if not attempt_can_run(doc, attempt_id):
+			frappe.db.rollback()
+			return
+		verify_validation_signature(doc)
+		if doc.status == "Queued":
+			doc.status = "Processing"
+			doc.started_at = now()
+			doc.completed_at = None
+			doc.error_log = None
+			doc.save(ignore_permissions=True)
+		# RQ guarantees that one job_id is not executed concurrently. A Processing
+		# retry with this same attempt_id therefore represents recovery after a hard kill.
+		frappe.db.commit()
 		run_import(docname, dry_run=False)
+	except RETRYABLE_IMPORT_ERRORS:
+		# Frappe retries transient database/job errors. Keep this attempt Processing
+		# so the same attempt_id can safely resume after the financial rollback.
+		frappe.db.rollback()
+		raise
 	except Exception:
-		summary = ImportSummary(
-			total_rows=doc.total_rows or 0,
-			created_umreci=doc.created_umreci or 0,
-			updated_umreci=doc.updated_umreci or 0,
-			created_bookings=doc.created_bookings or 0,
-			updated_bookings=doc.updated_bookings or 0,
-			row_errors=(doc.row_errors or 0) + 1,
-		)
-		_update_import_doc(docname, summary, [], "Failed", error_log=frappe.get_traceback())
+		error_log = frappe.get_traceback()
+		# Roll back every financial write made by this attempt before recording
+		# the terminal failure in a fresh transaction.
+		frappe.db.rollback()
+		_mark_failed_attempt(docname, attempt_id, error_log)
+		frappe.db.commit()
 		raise
 
 
-def enqueue_import(docname: str, user: str | None = None) -> dict:
-	doc = frappe.get_doc(DOCTYPE_IMPORT, docname)
-	doc.check_permission("write")
-	job = frappe.enqueue(
+def _enqueue_attempt(docname: str, attempt_id: str, user: str, *, after_commit: bool) -> None:
+	frappe.enqueue(
 		"umre_ops.umre_ops.services.excel_import_service.run_import_job",
 		queue="long",
 		docname=docname,
-		user=user or frappe.session.user,
-		job_name=f"Umre Excel Import {docname}",
+		attempt_id=attempt_id,
+		user=user,
+		job_id=attempt_id,
+		deduplicate=True,
+		enqueue_after_commit=after_commit,
 	)
+
+
+def enqueue_import(docname: str, user: str | None = None) -> dict:
+	frappe.db.sql("select name from `tabUmre Excel Import` where name = %s for update", docname)
+	doc = frappe.get_doc(DOCTYPE_IMPORT, docname)
+	doc.check_permission("write")
+	queue_user = user or frappe.session.user
+	if doc.status in {"Queued", "Processing"} and doc.job_id:
+		if not is_job_enqueued(doc.job_id):
+			_enqueue_attempt(docname, doc.job_id, queue_user, after_commit=False)
+		return {"job_id": doc.job_id, "status": doc.status}
+	if doc.status != "Validated" or doc.row_errors:
+		frappe.throw(_("Aktarımı başlatmadan önce hatasız bir kuru çalıştırma yapın."))
+	verify_validation_signature(doc)
+	attempt_id = uuid4().hex
 	doc.status = "Queued"
-	doc.job_id = getattr(job, "id", None)
+	doc.job_id = attempt_id
 	doc.started_at = None
 	doc.completed_at = None
 	doc.save(ignore_permissions=True)
-	return {"job_id": doc.job_id, "status": doc.status}
+	_enqueue_attempt(docname, attempt_id, queue_user, after_commit=True)
+	return {"job_id": attempt_id, "status": "Queued"}

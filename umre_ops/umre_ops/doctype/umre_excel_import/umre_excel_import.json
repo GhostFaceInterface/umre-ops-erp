@@ -8,9 +8,11 @@
  "field_order": [
   "import_setup_section",
   "import_file",
+  "worksheet_name",
   "target_tour",
   "status",
   "job_id",
+  "validation_signature",
   "summary_section",
   "total_rows",
   "created_umreci",
@@ -38,6 +40,11 @@
    "reqd": 1
   },
   {
+   "fieldname": "worksheet_name",
+   "fieldtype": "Select",
+   "label": "Excel Sayfası"
+  },
+  {
    "fieldname": "target_tour",
    "fieldtype": "Link",
    "label": "Hedef Tur",
@@ -57,6 +64,13 @@
    "fieldname": "job_id",
    "fieldtype": "Data",
    "label": "İş ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "validation_signature",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Doğrulama İmzası",
    "read_only": 1
   },
   {
