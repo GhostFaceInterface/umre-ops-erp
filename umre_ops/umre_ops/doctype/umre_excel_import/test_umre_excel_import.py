@@ -118,17 +118,66 @@ class IntegrationTestUmreExcelImport(IntegrationTestCase):
 			"ODA SAYISI": "2",
 			"TELEFON NUMARASI": "0500 000 00 00",
 			"KİMDEN": "Kaynak",
+			"FİYAT": "0",
 			"ÖDEDİĞİ MİKTAR": "1",
 			"YOLCU STATÜSÜ": "HOCA",
 		}
 		with self.assertRaises(frappe.ValidationError):
 			_normalize_row(row, "TUR-1")
 
+	def test_excel_price_is_preserved_without_reading_tour_tariff(self) -> None:
+		row = self._valid_row()
+		row["FİYAT"] = "1.234,56"
+		normalized = _normalize_row(row, "TUR-WITH-DIFFERENT-TARIFF")
+		self.assertEqual(normalized["ucret"], 1234.56)
+		self.assertEqual(normalized["bildirilen_odenen"], 1000)
+		self.assertEqual(normalized["odenen"], 0)
+
+	def test_price_rules_follow_passenger_status(self) -> None:
+		for price in ("0", "-1"):
+			row = self._valid_row(**{"FİYAT": price})
+			with self.assertRaises(frappe.ValidationError):
+				_normalize_row(row, "TUR-1")
+
+		for price in ("1", "-1"):
+			row = self._valid_row(
+				**{"FİYAT": price, "ÖDEDİĞİ MİKTAR": "0", "YOLCU STATÜSÜ": "HOCA"}
+			)
+			with self.assertRaises(frappe.ValidationError):
+				_normalize_row(row, "TUR-1")
+
+		row = self._valid_row(
+			**{"FİYAT": "0", "ÖDEDİĞİ MİKTAR": "0", "YOLCU STATÜSÜ": "HOCA"}
+		)
+		self.assertEqual(_normalize_row(row, "TUR-1")["ucret"], 0)
+
+	@staticmethod
+	def _valid_row(**overrides):
+		row = {
+			"TC KİMLİK": "12345678901",
+			"AD": "Ali",
+			"SOYAD": "Veli",
+			"CİNSİYET": "MR",
+			"UYRUK": "TC",
+			"DOĞUM TARİHİ": "1990-01-01",
+			"GELDİĞİ İL": "Ankara",
+			"ODA SAYISI": "2",
+			"TELEFON NUMARASI": "0500 000 00 00",
+			"KİMDEN": "Kaynak",
+			"FİYAT": "1700",
+			"ÖDEDİĞİ MİKTAR": "1000",
+			"YOLCU STATÜSÜ": "UMRECI",
+		}
+		row.update(overrides)
+		return row
+
 	def test_mapping_is_case_insensitive_complete_and_one_to_one(self) -> None:
 		doc = make_import()
 		mapping = _validated_mapping(doc, [field.lower() for field in IMPORT_FIELDS])
 		self.assertEqual(tuple(mapping), IMPORT_FIELDS)
-		doc.column_mappings = doc.column_mappings[:-1]
+		doc.column_mappings = [
+			row for row in doc.column_mappings if row.target_field != "FİYAT"
+		]
 		with self.assertRaises(frappe.ValidationError):
 			_validated_mapping(doc, list(IMPORT_FIELDS))
 

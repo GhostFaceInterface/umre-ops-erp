@@ -24,3 +24,4 @@ umre_ops.patches.sync_tour_diyanet_rule_para_birimi
 umre_ops.patches.backfill_payment_date_provenance
 umre_ops.patches.backfill_umre_tour_season
 umre_ops.patches.backfill_booking_cost_policy
+umre_ops.patches.restore_july_2026_excel_prices

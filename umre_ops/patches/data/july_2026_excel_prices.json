@@ -1,0 +1,401 @@
+{
+  "schema_version": 1,
+  "patch_id": "restore_july_2026_excel_prices_v1",
+  "tour": "6 Temmuz 40 vakit medine umresi",
+  "tour_code": "010",
+  "start_date": "2026-07-06",
+  "currency": "USD",
+  "source_file_name": "ERPNext sistemine verilecek dosya.xlsx",
+  "source_sha256": "cdbabf97796547869a2ef6ecde66c0aee97b966fa3d58b41efce2ed0aa8d1304",
+  "source_sheet": "sermed_big_data",
+  "expected": {
+    "row_count": 63,
+    "unique_tc_count": 63,
+    "positive_price_count": 58,
+    "price_total": 85200,
+    "reported_paid_total": 84650,
+    "gross_shortfall": 850,
+    "gross_overpayment": 300
+  },
+  "rows_sha256": "bfa80e7f4ba28d788ee2238ee1cbda2330e204d24f0399d0961c9b4a8cf3cc95",
+  "rows": [
+    {
+      "tc_sha256": "04ef5fe2a2e066c7dd3f089fc112d59086d65080abe4fe0f3a0387631f31a398",
+      "price": 1500,
+      "reported_paid": 1475,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "074d8257c31dd84aa8dbf045dee7d6d5488b4c3800565d840003fac636e5e299",
+      "price": 1600,
+      "reported_paid": 1600,
+      "room_size": 3
+    },
+    {
+      "tc_sha256": "09cab34d2e529a6b7bb3c853e5df229c9354a42b65819ea636a122593f811787",
+      "price": 1500,
+      "reported_paid": 1500,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "0dd77dd054956e777432966406bb5732066cf696ddb82d993dfa04d86c81cdca",
+      "price": 1500,
+      "reported_paid": 1475,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "12b1bd145a5812ff151425fc19fae07e90158a45e4ec71cf9be271c9529ca27b",
+      "price": 1500,
+      "reported_paid": 1475,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "134b264930cc7b0f3938d3785ebd57a40f176c4ca44bf0c38a7434d97944dd56",
+      "price": 0,
+      "reported_paid": 0,
+      "room_size": 2
+    },
+    {
+      "tc_sha256": "1579e126f11c3a39a65b3791cf909763e9aef8d4048a62b56a7e4540437e9aae",
+      "price": 1600,
+      "reported_paid": 1600,
+      "room_size": 2
+    },
+    {
+      "tc_sha256": "1866925fa5889662f87c67cb526e667c22eec7058204a9400d85fc5b33bae678",
+      "price": 1600,
+      "reported_paid": 1600,
+      "room_size": 3
+    },
+    {
+      "tc_sha256": "1e80a2072966e1063ea0da7555483515083e17d78d9df8e72509d35898ae5088",
+      "price": 1700,
+      "reported_paid": 1700,
+      "room_size": 2
+    },
+    {
+      "tc_sha256": "228e1ad2481e93140f854a5e8e12b2dd7f33daaf9fac3085e994e4ed33230d0a",
+      "price": 1500,
+      "reported_paid": 1500,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "26d551ae4b99670a3bc14b41537e780f8ea7b6fbdce04d2dbc94fa158842c006",
+      "price": 1700,
+      "reported_paid": 1700,
+      "room_size": 2
+    },
+    {
+      "tc_sha256": "2830cf3295000dc53c7067a2d4ab3636ee4c3aaa121153e229ba9838008abf40",
+      "price": 1700,
+      "reported_paid": 1700,
+      "room_size": 2
+    },
+    {
+      "tc_sha256": "2c3a25e55ea82adb2bbb2d20c83527f2fe8f3fc240636ee49bb4e184039da8f4",
+      "price": 1600,
+      "reported_paid": 1600,
+      "room_size": 3
+    },
+    {
+      "tc_sha256": "2f3c355e44c62e07b2fe13a96d3c1fe99a5627d8de64cfb0180a218a3d6891b0",
+      "price": 950,
+      "reported_paid": 950,
+      "room_size": 2
+    },
+    {
+      "tc_sha256": "349aa9e3a64237a173b520b7c250f12213d27751cea8d85be4153c155a6ba4e9",
+      "price": 1500,
+      "reported_paid": 1500,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "3a9812efc5647cb1aeb1174edd2d5277635c9982c0c361967c3f4ea873c957df",
+      "price": 1500,
+      "reported_paid": 1500,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "40e7340bc25553e78cd39964817c90c91becbafa4be0be156f2a17fd177b7397",
+      "price": 0,
+      "reported_paid": 0,
+      "room_size": 2
+    },
+    {
+      "tc_sha256": "44b3889717dbb342984b134cb4410af00c303238e375fa64838387c37a05c73b",
+      "price": 1700,
+      "reported_paid": 1700,
+      "room_size": 2
+    },
+    {
+      "tc_sha256": "490482f0afd4dd0562ce867e1807eb653a1ceede8cea5ad3c1e23aafa71f2a23",
+      "price": 950,
+      "reported_paid": 900,
+      "room_size": 3
+    },
+    {
+      "tc_sha256": "4b76063942335035d22173451d9e51d3d5b171f2f8beb1265581ca230c8e3bed",
+      "price": 1700,
+      "reported_paid": 2000,
+      "room_size": 1
+    },
+    {
+      "tc_sha256": "4d32a2a381c2bf946e706f3029783525fbc16f71fa9a666f34c5bfd373bf66fd",
+      "price": 1500,
+      "reported_paid": 1500,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "4f14b7f209376e1132a5e604a05373de1f607affb21622d6603c491fcd545b4b",
+      "price": 1500,
+      "reported_paid": 1500,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "4f93e700f2f9ea4804582dfff12a9765b1707b7dc3f72d8ea2927fc8b11b71d1",
+      "price": 1700,
+      "reported_paid": 1600,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "5ed186d8fcc64e5f8ad709a251fa4737048a55420857df47322b1f9013ad54c6",
+      "price": 950,
+      "reported_paid": 950,
+      "room_size": 2
+    },
+    {
+      "tc_sha256": "6016df22db1b6a9f5de2b6c252a598201900bff3d8cb4df694214abb4ac5fb44",
+      "price": 1600,
+      "reported_paid": 1600,
+      "room_size": 3
+    },
+    {
+      "tc_sha256": "607c3d0c33f8af3fc8c11f1662e2400a8c02c0f3a8bf33b73dae69ec025423de",
+      "price": 1500,
+      "reported_paid": 1500,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "612f4afc754daec6af05be2a960689a55c8e4837f2ee52200544bb831392ba82",
+      "price": 1700,
+      "reported_paid": 1700,
+      "room_size": 2
+    },
+    {
+      "tc_sha256": "65eb2eb253784ea3519bf461db0697ada49226f77d9f42a6cb61b262978ad3cf",
+      "price": 950,
+      "reported_paid": 950,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "6693fb566c326df74ad4f71d5203f2733ff8aafe1669b3698b574ec08b21cb29",
+      "price": 950,
+      "reported_paid": 800,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "7d68e928f4696b714b7faa5575d92945683bad8b10becfc77f965ccba6cf6d83",
+      "price": 1500,
+      "reported_paid": 1500,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "7e78f76c84eadf3c6d88468a9f680b74b74a840516cdbbbbd464e51056763ed7",
+      "price": 1500,
+      "reported_paid": 1500,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "8089cca53dc6d8d6d8507cd3381baed0fccb23c07df12c4594778526246b4cd3",
+      "price": 950,
+      "reported_paid": 900,
+      "room_size": 3
+    },
+    {
+      "tc_sha256": "814edb73e91049cfbf5a9b0429158aef81566b6ed24e6b19ebab8bbd6dbc29fa",
+      "price": 950,
+      "reported_paid": 900,
+      "room_size": 3
+    },
+    {
+      "tc_sha256": "8311df3c8d058cc778d5b1ff79432e928311f3e8c80b0459dfc9837f0119c559",
+      "price": 950,
+      "reported_paid": 900,
+      "room_size": 3
+    },
+    {
+      "tc_sha256": "8acd79719d4e1c4af75bd78cbf76715a0c12c381dfed33c97c0b700cf90a931c",
+      "price": 1500,
+      "reported_paid": 1500,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "8bfa14a74e648081a3790fd977d9a642b54f948b5e12418eca6b37a73cdde623",
+      "price": 1500,
+      "reported_paid": 1500,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "8d57a6c9267ff0d5121da377b883e152c6fb7d711db2c27f990bdec985652c2e",
+      "price": 1600,
+      "reported_paid": 1600,
+      "room_size": 2
+    },
+    {
+      "tc_sha256": "95c1934db573ba0ff6895f8a8e254b46a0d1d98fdab921b0f068bb10b0b6a83a",
+      "price": 1600,
+      "reported_paid": 1600,
+      "room_size": 3
+    },
+    {
+      "tc_sha256": "9672bd0dde197dffce404457b862bd463138168092add029397e8bb8015c138f",
+      "price": 1500,
+      "reported_paid": 1500,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "99f18c4159af13c49428ea5ec51de067303eb144d0520cb739d24e88b4627659",
+      "price": 1500,
+      "reported_paid": 1500,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "9b2b323042f0991ceef327de7b24733daf3abefe39eca6cc7084d2bb5fc490a0",
+      "price": 1500,
+      "reported_paid": 1500,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "9d0690ec8b61f6e40a4f8971c5a48a9aa75ed045f36ac4362a7571e712de83d6",
+      "price": 1600,
+      "reported_paid": 1600,
+      "room_size": 3
+    },
+    {
+      "tc_sha256": "a2cb1d58fbc9c57dbbf2c5153c045096f2e696f8b202a5d1b434f5b6f26eafcb",
+      "price": 0,
+      "reported_paid": 0,
+      "room_size": 2
+    },
+    {
+      "tc_sha256": "a4f83b76b4e1fd5ce4fc9fbd11e3b834ffd34c9f8d2b634afaa580ac44490833",
+      "price": 1600,
+      "reported_paid": 1600,
+      "room_size": 3
+    },
+    {
+      "tc_sha256": "aac8c44d653767b06e9dfb56ad6fe1bfdbfe508cd5efb28be6fd80a57602df79",
+      "price": 1500,
+      "reported_paid": 1500,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "bd2402accf6c66e56094c68a8780db21daa9b11486903a262e8ee54c3b24c6c4",
+      "price": 0,
+      "reported_paid": 0,
+      "room_size": 2
+    },
+    {
+      "tc_sha256": "be1614d6ca92ba57b9e1dc0b5161a51db84fb8d22ca0856317700aefa1a2fae8",
+      "price": 1700,
+      "reported_paid": 1600,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "beb29b34838742cea7f1f818cb431a70dee0c2bc431fad17bce5faf54bf2df6e",
+      "price": 1600,
+      "reported_paid": 1600,
+      "room_size": 3
+    },
+    {
+      "tc_sha256": "bf760e544e9621bd2379a8d0edc68c7029de51d4743da2f3711dbf02222ae495",
+      "price": 1600,
+      "reported_paid": 1600,
+      "room_size": 3
+    },
+    {
+      "tc_sha256": "c1c9e317d20c46dc0cb6ae0bc0e524e5020f62b2b41219efbb240e5ea06f9120",
+      "price": 1700,
+      "reported_paid": 1700,
+      "room_size": 2
+    },
+    {
+      "tc_sha256": "c62f3bd18fe933ab5a7da35a6e4271e372f9d595dc1e0c4f9b8303f3d25168af",
+      "price": 1700,
+      "reported_paid": 1700,
+      "room_size": 2
+    },
+    {
+      "tc_sha256": "c93a374a2c71cfbc707e987da433df0e75288b4c9a456fbda51338b93a847ee0",
+      "price": 1500,
+      "reported_paid": 1500,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "ce0a5e88c817e4aac962192964c84ae7ce4b764f2f9349a92a3c05559f81b342",
+      "price": 1500,
+      "reported_paid": 1500,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "d5d777a819431d3f848dae1ad5758c85bae2fea8c0dac1eae8d87086c2c1b6d2",
+      "price": 1600,
+      "reported_paid": 1600,
+      "room_size": 3
+    },
+    {
+      "tc_sha256": "daf2703c80c2c02294007a7ce77ec8133a588483c3f1e06fcd8a4600efb54171",
+      "price": 950,
+      "reported_paid": 950,
+      "room_size": 2
+    },
+    {
+      "tc_sha256": "dc1f53ba3a9ac9ca81a6bc77e05939b44ac7a5071ca95908a30a0809c4ae64a3",
+      "price": 1600,
+      "reported_paid": 1600,
+      "room_size": 3
+    },
+    {
+      "tc_sha256": "dcb172e1ef74894278b6f13d6c7b47cfd14f30c4e472e18073763babe9cfbbf2",
+      "price": 1500,
+      "reported_paid": 1475,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "e31a0d561bcf02504f3f513fab92a6bff31187c8ddd5d6b14e46ffefaa6b3ddc",
+      "price": 1500,
+      "reported_paid": 1500,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "ebf6710aa457506f18988be2685c4455ab83356054b5108f40a124d1cbd196bd",
+      "price": 1700,
+      "reported_paid": 1700,
+      "room_size": 2
+    },
+    {
+      "tc_sha256": "eefce0533ea0dc246bcd1f907c16901b9347022c2d692d16aeeb8a00dfdf8015",
+      "price": 950,
+      "reported_paid": 750,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "f15d0f8566bbcd6dc87c6f7a10c5933172cf46e6aa9baec7db2b1e66813fa544",
+      "price": 1500,
+      "reported_paid": 1500,
+      "room_size": 4
+    },
+    {
+      "tc_sha256": "f36ee32282c14126c70aa59e63085a406c5d642da0ffc5fa1636f1c374f28662",
+      "price": 1700,
+      "reported_paid": 1700,
+      "room_size": 2
+    },
+    {
+      "tc_sha256": "ff1a808535495585922af3769a5f853599e18990eacba5c30baf2259088876fd",
+      "price": 0,
+      "reported_paid": 0,
+      "room_size": 2
+    }
+  ]
+}

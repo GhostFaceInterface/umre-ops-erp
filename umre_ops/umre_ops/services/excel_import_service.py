@@ -37,6 +37,7 @@ IMPORT_FIELDS = (
 	"ODA SAYISI",
 	"TELEFON NUMARASI",
 	"KİMDEN",
+	"FİYAT",
 	"ÖDEDİĞİ MİKTAR",
 	"YOLCU STATÜSÜ",
 )
@@ -496,24 +497,21 @@ def _lock_import_materialization() -> None:
 		frappe.throw(_("İçe aktarım kilidi alınamadı."))
 
 
-def _tour_room_price(tour: str, oda_tipi: str) -> float:
-	field = {
-		"1 Kişilik": "bir_kisilik_oda",
-		"2 Kişilik": "iki_kisilik_oda",
-		"3 Kişilik": "uc_kisilik_oda",
-		"4 Kişilik": "dort_kisilik_oda",
-	}[oda_tipi]
-	return flt(frappe.db.get_value("Umre Tour", tour, field) or 0)
-
-
-def _normalize_row(row: dict[str, Any], tour: str) -> dict[str, Any]:
+def _normalize_row(row: dict[str, Any], _tour: str) -> dict[str, Any]:
 	tc = normalize_tc(row["TC KİMLİK"])
 	if not tc:
 		frappe.throw(_("TC / Yabancı Kimlik zorunludur."))
 	arrival, return_city = split_cities(row["GELDİĞİ İL"])
 	room = map_oda_tipi(row["ODA SAYISI"])
 	status = normalize_status(row["YOLCU STATÜSÜ"])
+	price = safe_float(row["FİYAT"])
 	paid = safe_float(row["ÖDEDİĞİ MİKTAR"])
+	if price < 0:
+		frappe.throw(_("FİYAT negatif olamaz."))
+	if status == "UMRECI" and price <= 0:
+		frappe.throw(_("UMRECI statüsündeki yolcular için FİYAT pozitif olmalıdır."))
+	if status != "UMRECI" and price != 0:
+		frappe.throw(_("UMRECI dışındaki yolcular için FİYAT sıfır olmalıdır."))
 	if paid < 0:
 		frappe.throw(_("ÖDEDİĞİ MİKTAR negatif olamaz."))
 	if status != "UMRECI" and paid:
@@ -525,9 +523,6 @@ def _normalize_row(row: dict[str, Any], tour: str) -> dict[str, Any]:
 	soyad = preserve_excel_text(row["SOYAD"])
 	if not ad or not soyad:
 		frappe.throw(_("AD ve SOYAD zorunludur."))
-	price = _tour_room_price(tour, room) if status == "UMRECI" else 0
-	if status == "UMRECI" and price <= 0:
-		frappe.throw(_("Seçilen oda tipi için hedef turda pozitif bir fiyat tanımlanmalıdır."))
 	return {
 		"tc_kimlik": tc,
 		"ad": ad,

@@ -3,7 +3,7 @@
  "field_order": ["source_column", "target_field"],
  "fields": [
   {"fieldname":"source_column","fieldtype":"Select","in_list_view":1,"label":"Excel Kolonu","reqd":1},
-  {"fieldname":"target_field","fieldtype":"Select","in_list_view":1,"label":"Hedef Alan","options":"TC KİMLİK\nAD\nSOYAD\nCİNSİYET\nUYRUK\nDOĞUM TARİHİ\nGELDİĞİ İL\nODA SAYISI\nTELEFON NUMARASI\nKİMDEN\nÖDEDİĞİ MİKTAR\nYOLCU STATÜSÜ","reqd":1}
+  {"fieldname":"target_field","fieldtype":"Select","in_list_view":1,"label":"Hedef Alan","options":"TC KİMLİK\nAD\nSOYAD\nCİNSİYET\nUYRUK\nDOĞUM TARİHİ\nGELDİĞİ İL\nODA SAYISI\nTELEFON NUMARASI\nKİMDEN\nFİYAT\nÖDEDİĞİ MİKTAR\nYOLCU STATÜSÜ","reqd":1}
  ],
  "istable": 1, "module": "Umre Ops", "name": "Umre Excel Column Mapping", "permissions": []
 }
