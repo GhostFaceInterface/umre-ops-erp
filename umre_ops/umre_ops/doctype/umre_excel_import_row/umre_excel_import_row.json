@@ -1,0 +1,16 @@
+{
+ "actions": [], "doctype": "DocType", "editable_grid": 1, "engine": "InnoDB",
+ "field_order": ["row_number", "tc_kimlik", "row_status", "referral_text", "referral_source", "message", "row_key", "raw_data", "normalized_data"],
+ "fields": [
+  {"fieldname":"row_number","fieldtype":"Int","in_list_view":1,"label":"Satır","read_only":1},
+  {"fieldname":"tc_kimlik","fieldtype":"Data","in_list_view":1,"label":"TC / Yabancı Kimlik","read_only":1},
+  {"fieldname":"row_status","fieldtype":"Select","in_list_view":1,"label":"Durum","options":"Ready\nPending Referral\nPending Conflict\nNo-op\nImported\nError","read_only":1},
+  {"fieldname":"referral_text","fieldtype":"Data","in_list_view":1,"label":"Excel Referansı","read_only":1},
+  {"fieldname":"referral_source","fieldtype":"Link","in_list_view":1,"label":"Referans Kaynağı","options":"Referral Source"},
+  {"fieldname":"message","fieldtype":"Small Text","label":"Mesaj","read_only":1},
+  {"fieldname":"row_key","fieldtype":"Data","hidden":1,"label":"Satır Anahtarı","read_only":1},
+  {"fieldname":"raw_data","fieldtype":"Code","hidden":1,"label":"Ham Veri","options":"JSON","read_only":1},
+  {"fieldname":"normalized_data","fieldtype":"Code","hidden":1,"label":"Normalize Veri","options":"JSON","read_only":1}
+ ],
+ "istable": 1, "module": "Umre Ops", "name": "Umre Excel Import Row", "permissions": []
+}

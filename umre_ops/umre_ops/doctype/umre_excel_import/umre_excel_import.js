@@ -1,136 +1,93 @@
 // Copyright (c) 2026, Sermed Turizm and contributors
-// For license information, please see license.txt
 
 frappe.ui.form.on("Umre Excel Import", {
 	refresh(frm) {
-		if (frm.is_new()) {
-			return;
-		}
-		const import_is_locked = ["Queued", "Processing", "Completed"].includes(frm.doc.status);
-		frm.toggle_enable(["import_file", "target_tour", "worksheet_name"], !import_is_locked);
-		load_worksheet_options(frm);
+		if (frm.is_new()) return;
+		const locked = ["Queued", "Processing", "Completed"].includes(frm.doc.status);
+		frm.toggle_enable(["import_file", "target_tour", "header_row", "column_mappings"], !locked);
 
-		if (!import_is_locked) {
-			frm.add_custom_button(__("Validate / Dry Run"), () => {
-				prepare_validation(frm).then(() => frm.call({
-					method: "umre_ops.umre_ops.doctype.umre_excel_import.umre_excel_import.validate_import",
-					args: { docname: frm.doc.name },
-					freeze: true,
-					freeze_message: __("Validating Excel file..."),
-					callback(r) {
-						if (r.message) {
-							show_import_summary(r.message, __("Dry Run Complete"));
-							frm.reload_doc();
-						}
-					},
-				}));
-			});
-		}
-
-		if (frm.doc.status === "Validated" && !frm.doc.row_errors) {
-			frm.add_custom_button(__("Start Import"), () => {
-				frappe.confirm(
-					__("This will create or update Umreci and Umre Booking records. Continue?"),
-					async () => {
-						if (frm.is_dirty()) {
-							await frm.save();
-						}
-						frm.call({
-							method: "umre_ops.umre_ops.doctype.umre_excel_import.umre_excel_import.start_import",
-							args: { docname: frm.doc.name },
-							freeze: true,
-							freeze_message: __("Queueing import..."),
-							callback(r) {
-								if (r.message) {
-									frappe.msgprint({
-										title: __("Import Queued"),
-										message: __("Background job queued: {0}", [r.message.job_id || ""]),
-										indicator: "blue",
-									});
-									frm.reload_doc();
-								}
-							},
-						});
-					}
-				);
-			});
-		}
-
-		if (["Queued", "Processing"].includes(frm.doc.status) && frm.doc.job_id) {
-			frm.add_custom_button(__("Kuyruğu Kontrol Et / Yeniden Dene"), () => {
+		if (!locked && frm.doc.import_file) {
+			frm.add_custom_button(__("Başlıkları Oku"), () => load_headers(frm));
+			const pending = (frm.doc.staged_rows || []).find(
+				(row) => row.row_status === "Pending Referral" && row.referral_text
+			);
+			if (pending) {
+				frm.add_custom_button(__("Bekleyen Referansı Oluştur"), () => frappe.confirm(
+					__("Yeni referans kaynağı oluşturulsun mu: {0}", [pending.referral_text]),
+					() => frappe.call({
+						method: "umre_ops.umre_ops.doctype.umre_excel_import.umre_excel_import.create_referral",
+						args: { docname: frm.doc.name, referral_text: pending.referral_text },
+						callback: () => frm.reload_doc(),
+					})
+				));
+			}
+			frm.add_custom_button(__("Validate / Dry Run"), async () => {
+				if (frm.is_dirty()) await frm.save();
 				frm.call({
-					method: "umre_ops.umre_ops.doctype.umre_excel_import.umre_excel_import.start_import",
-					args: { docname: frm.doc.name },
-					freeze: true,
-					freeze_message: __("Kuyruk durumu kontrol ediliyor..."),
-					callback(r) {
-						if (r.message) {
-							frappe.show_alert({ message: __("Aktarım işi kuyruğa hazır."), indicator: "green" });
-							frm.reload_doc();
-						}
-					},
+					method: "umre_ops.umre_ops.doctype.umre_excel_import.umre_excel_import.validate_import",
+					args: { docname: frm.doc.name }, freeze: true,
+					freeze_message: __("Excel dosyası doğrulanıyor..."),
+					callback: (r) => { if (r.message) { show_summary(r.message); frm.reload_doc(); } },
 				});
 			});
 		}
+		if (frm.doc.status === "Validated" && !frm.doc.row_errors) {
+			frm.add_custom_button(__("Start Import"), () => frappe.confirm(
+				__("Hazır satırlar aktarılacak; bekleyen referans ve çakışmalar atlanacak. Devam?"),
+				() => frm.call({
+					method: "umre_ops.umre_ops.doctype.umre_excel_import.umre_excel_import.start_import",
+					args: { docname: frm.doc.name }, freeze: true,
+					callback: () => frm.reload_doc(),
+				})
+			));
+		}
+		if (["Queued", "Processing"].includes(frm.doc.status) && frm.doc.job_id) {
+			frm.add_custom_button(__("Kuyruğu Kontrol Et / Yeniden Dene"), () => frm.call({
+				method: "umre_ops.umre_ops.doctype.umre_excel_import.umre_excel_import.start_import",
+				args: { docname: frm.doc.name }, callback: () => frm.reload_doc(),
+			}));
+		}
 	},
-	import_file(frm) {
-		frm.set_df_property("worksheet_name", "options", [""]);
-		frm.set_value("worksheet_name", null);
-	},
-	after_save(frm) {
-		load_worksheet_options(frm);
+	import_file(frm) { invalidate_mapping(frm); },
+	header_row(frm) { invalidate_mapping(frm); },
+});
+
+frappe.ui.form.on("Umre Excel Import Row", {
+	referral_source(frm, cdt, cdn) {
+		const row = locals[cdt][cdn];
+		if (!row.referral_source) return;
+		frappe.call({
+			method: "umre_ops.umre_ops.doctype.umre_excel_import.umre_excel_import.resolve_referral",
+			args: { docname: frm.doc.name, referral_text: row.referral_text, referral_source: row.referral_source },
+			callback: () => frm.reload_doc(),
+		});
 	},
 });
 
-async function prepare_validation(frm) {
-	if (frm.is_dirty()) {
-		await frm.save();
-	}
-	const worksheets = await load_worksheet_options(frm);
-	if (worksheets.length > 1 && !frm.doc.worksheet_name) {
-		frappe.throw(__("Excel dosyasında birden fazla sayfa var. Lütfen içe aktarılacak sayfayı seçin."));
-	}
-	if (frm.is_dirty()) {
-		await frm.save();
-	}
-}
-
-async function load_worksheet_options(frm) {
-	if (frm.is_new() || !frm.doc.import_file || (frm.doc.status === "Completed" && !frm.doc.worksheet_name)) {
-		return [];
-	}
-	const import_file = frm.doc.import_file;
+async function load_headers(frm) {
+	if (frm.is_dirty()) await frm.save();
 	const response = await frappe.call({
-		method: "umre_ops.umre_ops.doctype.umre_excel_import.umre_excel_import.get_worksheet_names",
-		args: { docname: frm.doc.name },
+		method: "umre_ops.umre_ops.doctype.umre_excel_import.umre_excel_import.inspect_headers",
+		args: { docname: frm.doc.name }, freeze: true,
 	});
-	if (frm.doc.import_file !== import_file) {
-		return [];
-	}
-	const worksheets = response.message || [];
-	frm.set_df_property("worksheet_name", "options", ["", ...worksheets]);
-	if (worksheets.length === 1 && !frm.doc.worksheet_name) {
-		await frm.set_value("worksheet_name", worksheets[0]);
-	} else if (frm.doc.worksheet_name && !worksheets.includes(frm.doc.worksheet_name)) {
-		await frm.set_value("worksheet_name", null);
-	}
-	return worksheets;
+	const headers = response.message || [];
+	const source_field = frappe.meta.get_docfield("Umre Excel Column Mapping", "source_column", frm.doc.name);
+	if (source_field) source_field.options = ["", ...headers].join("\n");
+	frm.fields_dict.column_mappings.grid.refresh();
+	frappe.msgprint({ title: __("Bulunan Başlıklar"), message: headers.map(frappe.utils.escape_html).join("<br>") });
 }
 
-function show_import_summary(result, title) {
+function invalidate_mapping(frm) {
+	if (!frm.is_new() && !["Queued", "Processing", "Completed"].includes(frm.doc.status)) {
+		frm.set_value("status", "Draft");
+	}
+}
+
+function show_summary(result) {
 	const summary = result.summary || result;
 	frappe.msgprint({
-		title,
+		title: __("Dry Run Complete"),
 		indicator: summary.row_errors ? "orange" : "green",
-		message: `
-			<div>
-				<p><b>${__("Total Rows")}:</b> ${summary.total_rows || 0}</p>
-				<p><b>${__("Created Umreci")}:</b> ${summary.created_umreci || 0}</p>
-				<p><b>${__("Updated Umreci")}:</b> ${summary.updated_umreci || 0}</p>
-				<p><b>${__("Created Bookings")}:</b> ${summary.created_bookings || 0}</p>
-				<p><b>${__("Updated Bookings")}:</b> ${summary.updated_bookings || 0}</p>
-				<p><b>${__("Row Errors")}:</b> ${summary.row_errors || 0}</p>
-			</div>
-		`,
+		message: `${__("Total Rows")}: ${summary.total_rows || 0}<br>${__("Row Errors")}: ${summary.row_errors || 0}`,
 	});
 }

@@ -26,3 +26,20 @@ class Umreci(Document):
 			self.name = base
 		else:
 			self.name = make_autoname(f"{base}-.##")
+
+	def validate(self) -> None:
+		self.tc_kimlik = re.sub(r"\s+", "", str(self.tc_kimlik or "").strip()).upper()
+		if not self.tc_kimlik:
+			frappe.throw(_("TC / Yabancı Kimlik zorunludur."))
+		duplicate = frappe.db.sql(
+			"""
+			select name
+			from `tabUmreci`
+			where replace(replace(replace(tc_kimlik, ' ', ''), char(9), ''), char(10), '') = %s
+				and name != %s
+			limit 1
+			""",
+			(self.tc_kimlik, self.name or ""),
+		)
+		if duplicate:
+			frappe.throw(_("Bu TC / Yabancı Kimlik ile başka bir Umreci kaydı zaten var."))

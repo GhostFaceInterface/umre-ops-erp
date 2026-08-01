@@ -23,6 +23,7 @@ class UmreBooking(Document):
 	"""Recomputes list price, cost components, totals, and margin on every save."""
 
 	def validate(self) -> None:
+		self._enforce_booking_identity()
 		for payment in self.get("payments") or []:
 			validate_payment_date_provenance(payment)
 		# 1) Hard immutability gate. If `locked_financials` is set we forbid ANY
@@ -40,6 +41,17 @@ class UmreBooking(Document):
 			apply_to_booking(self)
 
 		self._sync_paid_amount_from_payments()
+
+	def _enforce_booking_identity(self) -> None:
+		if not (self.get("umreci") and self.get("tur")):
+			return
+		duplicate = frappe.db.get_value(
+			"Umre Booking",
+			{"umreci": self.umreci, "tur": self.tur, "name": ["!=", self.name or ""]},
+			"name",
+		)
+		if duplicate:
+			frappe.throw(_("Bu yolcu hedef tur için zaten bir rezervasyona sahip."))
 
 	def after_insert(self) -> None:
 		"""One-shot Cost Component generation. Idempotent: subsequent imports
@@ -61,8 +73,9 @@ class UmreBooking(Document):
 	def _enforce_financial_lock(self) -> None:
 		"""Reject silent mutation of locked financial fields.
 
-		Three immutable fields after the booking is `locked_financials = 1`:
-		`statu`, `ucret`, `manual_cost`. The previous data-corruption pattern
+		Imported financial inputs are immutable after `locked_financials = 1`:
+		`statu`, `ucret`, `manual_cost`, `bildirilen_odenen`, and the cost-policy
+		provenance fields. The previous data-corruption pattern
 		(re-import or `validate()` re-save silently rewriting these) is
 		structurally impossible while this guard is in place.
 		"""
@@ -74,7 +87,15 @@ class UmreBooking(Document):
 		db_doc = frappe.db.get_value(
 			"Umre Booking",
 			self.name,
-			["statu", "ucret", "manual_cost"],
+			[
+				"statu",
+				"ucret",
+				"manual_cost",
+				"bildirilen_odenen",
+				"cost_policy",
+				"cost_policy_version",
+				"import_row_key",
+			],
 			as_dict=True,
 		)
 		if not db_doc:
@@ -104,6 +125,15 @@ class UmreBooking(Document):
 					old_mc, new_mc
 				)
 			)
+		new_reported = flt(self.get("bildirilen_odenen") or 0)
+		old_reported = flt(db_doc.get("bildirilen_odenen") or 0)
+		if abs(new_reported - old_reported) > 0.01:
+			frappe.throw(
+				_("Locked field 'bildirilen_odenen' cannot be modified after import.")
+			)
+		for field in ("cost_policy", "cost_policy_version", "import_row_key"):
+			if str(self.get(field) or "") != str(db_doc.get(field) or ""):
+				frappe.throw(_("Locked field '{0}' cannot be modified after import.").format(field))
 
 	def _sync_paid_amount_from_payments(self) -> None:
 		"""

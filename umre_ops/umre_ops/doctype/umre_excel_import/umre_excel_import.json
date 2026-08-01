@@ -2,187 +2,47 @@
  "actions": [],
  "allow_rename": 0,
  "autoname": "UEI-.YYYY.-.#####",
- "creation": "2026-04-25 14:10:00.000000",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "import_setup_section",
-  "import_file",
-  "worksheet_name",
-  "target_tour",
-  "status",
-  "job_id",
-  "validation_signature",
-  "summary_section",
-  "total_rows",
-  "created_umreci",
-  "updated_umreci",
-  "created_bookings",
-  "updated_bookings",
-  "row_errors",
-  "started_at",
-  "completed_at",
-  "results_section",
-  "dry_run_result",
-  "row_log",
-  "error_log"
+  "import_setup_section", "import_file", "target_tour", "header_row", "column_mappings",
+  "status", "job_id", "validation_signature", "staging_section", "staged_rows",
+  "summary_section", "total_rows", "created_umreci", "updated_umreci", "created_bookings",
+  "updated_bookings", "row_errors", "started_at", "completed_at", "results_section",
+  "dry_run_result", "row_log", "error_log"
  ],
  "fields": [
-  {
-   "fieldname": "import_setup_section",
-   "fieldtype": "Section Break",
-   "label": "İçe Aktarım Ayarları"
-  },
-  {
-   "fieldname": "import_file",
-   "fieldtype": "Attach",
-   "label": "İçe Aktarım Dosyası",
-   "reqd": 1
-  },
-  {
-   "fieldname": "worksheet_name",
-   "fieldtype": "Select",
-   "label": "Excel Sayfası"
-  },
-  {
-   "fieldname": "target_tour",
-   "fieldtype": "Link",
-   "label": "Hedef Tur",
-   "options": "Umre Tour",
-   "reqd": 1
-  },
-  {
-   "default": "Draft",
-   "fieldname": "status",
-   "fieldtype": "Select",
-   "in_list_view": 1,
-   "label": "Durum",
-   "options": "Draft\nValidated\nQueued\nProcessing\nCompleted\nFailed",
-   "read_only": 1
-  },
-  {
-   "fieldname": "job_id",
-   "fieldtype": "Data",
-   "label": "İş ID",
-   "read_only": 1
-  },
-  {
-   "fieldname": "validation_signature",
-   "fieldtype": "Data",
-   "hidden": 1,
-   "label": "Doğrulama İmzası",
-   "read_only": 1
-  },
-  {
-   "fieldname": "summary_section",
-   "fieldtype": "Section Break",
-   "label": "Özet"
-  },
-  {
-   "default": "0",
-   "fieldname": "total_rows",
-   "fieldtype": "Int",
-   "label": "Toplam Satır",
-   "read_only": 1
-  },
-  {
-   "default": "0",
-   "fieldname": "created_umreci",
-   "fieldtype": "Int",
-   "label": "Oluşturulan Umreci",
-   "read_only": 1
-  },
-  {
-   "default": "0",
-   "fieldname": "updated_umreci",
-   "fieldtype": "Int",
-   "label": "Güncellenen Umreci",
-   "read_only": 1
-  },
-  {
-   "default": "0",
-   "fieldname": "created_bookings",
-   "fieldtype": "Int",
-   "label": "Oluşturulan Rezervasyonlar",
-   "read_only": 1
-  },
-  {
-   "default": "0",
-   "fieldname": "updated_bookings",
-   "fieldtype": "Int",
-   "label": "Güncellenen Rezervasyonlar",
-   "read_only": 1
-  },
-  {
-   "default": "0",
-   "fieldname": "row_errors",
-   "fieldtype": "Int",
-   "label": "Satır Hataları",
-   "read_only": 1
-  },
-  {
-   "fieldname": "started_at",
-   "fieldtype": "Datetime",
-   "label": "Başlangıç Zamanı",
-   "read_only": 1
-  },
-  {
-   "fieldname": "completed_at",
-   "fieldtype": "Datetime",
-   "label": "Tamamlanma Zamanı",
-   "read_only": 1
-  },
-  {
-   "fieldname": "results_section",
-   "fieldtype": "Section Break",
-   "label": "Sonuçlar"
-  },
-  {
-   "fieldname": "dry_run_result",
-   "fieldtype": "Code",
-   "label": "Test Çalıştırma Sonucu",
-   "options": "JSON",
-   "read_only": 1
-  },
-  {
-   "fieldname": "row_log",
-   "fieldtype": "Code",
-   "label": "Satır Logu",
-   "options": "JSON",
-   "read_only": 1
-  },
-  {
-   "fieldname": "error_log",
-   "fieldtype": "Long Text",
-   "label": "Hata Logu",
-   "read_only": 1
-  }
+  {"fieldname":"import_setup_section","fieldtype":"Section Break","label":"İçe Aktarım Ayarları"},
+  {"fieldname":"import_file","fieldtype":"Attach","label":"İçe Aktarım Dosyası","reqd":1},
+  {"fieldname":"target_tour","fieldtype":"Link","label":"Hedef Tur","options":"Umre Tour","reqd":1},
+  {"default":"1","fieldname":"header_row","fieldtype":"Int","label":"Başlık Satırı","reqd":1},
+  {"fieldname":"column_mappings","fieldtype":"Table","label":"Kolon Eşlemeleri","options":"Umre Excel Column Mapping"},
+  {"default":"Draft","fieldname":"status","fieldtype":"Select","in_list_view":1,"label":"Durum","options":"Draft\nValidated\nQueued\nProcessing\nPartially Completed\nCompleted\nFailed","read_only":1},
+  {"fieldname":"job_id","fieldtype":"Data","label":"İş ID","read_only":1},
+  {"fieldname":"validation_signature","fieldtype":"Data","hidden":1,"label":"Doğrulama İmzası","read_only":1},
+  {"fieldname":"staging_section","fieldtype":"Section Break","label":"Satır Hazırlama"},
+  {"fieldname":"staged_rows","fieldtype":"Table","label":"Hazırlanan Satırlar","options":"Umre Excel Import Row"},
+  {"fieldname":"summary_section","fieldtype":"Section Break","label":"Özet"},
+  {"default":"0","fieldname":"total_rows","fieldtype":"Int","label":"Toplam Satır","read_only":1},
+  {"default":"0","fieldname":"created_umreci","fieldtype":"Int","label":"Oluşturulan Umreci","read_only":1},
+  {"default":"0","fieldname":"updated_umreci","fieldtype":"Int","label":"Güncellenen Umreci","read_only":1},
+  {"default":"0","fieldname":"created_bookings","fieldtype":"Int","label":"Oluşturulan Rezervasyonlar","read_only":1},
+  {"default":"0","fieldname":"updated_bookings","fieldtype":"Int","label":"Güncellenen Rezervasyonlar","read_only":1},
+  {"default":"0","fieldname":"row_errors","fieldtype":"Int","label":"Satır Hataları","read_only":1},
+  {"fieldname":"started_at","fieldtype":"Datetime","label":"Başlangıç Zamanı","read_only":1},
+  {"fieldname":"completed_at","fieldtype":"Datetime","label":"Tamamlanma Zamanı","read_only":1},
+  {"fieldname":"results_section","fieldtype":"Section Break","label":"Sonuçlar"},
+  {"fieldname":"dry_run_result","fieldtype":"Code","label":"Test Çalıştırma Sonucu","options":"JSON","read_only":1},
+  {"fieldname":"row_log","fieldtype":"Code","label":"Satır Logu","options":"JSON","read_only":1},
+  {"fieldname":"error_log","fieldtype":"Long Text","label":"Hata Logu","read_only":1}
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-04-25 14:10:00.000000",
- "modified_by": "Administrator",
  "module": "Umre Ops",
  "name": "Umre Excel Import",
  "naming_rule": "By \"Naming Series\" field",
- "owner": "Administrator",
- "permissions": [
-  {
-   "create": 1,
-   "delete": 1,
-   "email": 1,
-   "export": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "System Manager",
-   "share": 1,
-   "write": 1
-  }
- ],
- "row_format": "Dynamic",
- "rows_threshold_for_grid_search": 20,
+ "permissions": [{"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"report":1,"role":"System Manager","share":1,"write":1}],
  "sort_field": "creation",
  "sort_order": "DESC",
  "states": []

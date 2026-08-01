@@ -9,11 +9,17 @@ from frappe.model.document import Document
 from frappe.utils import cint
 
 from umre_ops.umre_ops.services.excel_import_service import (
+	create_referral as create_import_referral,
+)
+from umre_ops.umre_ops.services.excel_import_service import (
 	enqueue_import,
 	run_dry_run,
 )
 from umre_ops.umre_ops.services.excel_import_service import (
-	get_worksheet_names as get_import_worksheet_names,
+	inspect_headers as inspect_import_headers,
+)
+from umre_ops.umre_ops.services.excel_import_service import (
+	resolve_referral as resolve_import_referral,
 )
 
 
@@ -26,33 +32,29 @@ class UmreExcelImport(Document):
 		self._invalidate_stale_validation()
 
 	def _invalidate_stale_validation(self) -> None:
-		"""A validation result belongs to one exact file, target tour and worksheet."""
+		"""A validation result belongs to one exact file, tour, header row and mapping."""
 		if self.is_new() or self.flags.ignore_import_source_guard:
 			return
-		persisted = frappe.db.get_value(
-			"Umre Excel Import",
-			self.name,
-			["import_file", "target_tour", "worksheet_name", "status"],
-			as_dict=True,
-		)
+		persisted = frappe.get_doc("Umre Excel Import", self.name)
 		if not persisted:
 			return
 		if persisted.status == "Completed" and self.status != "Completed":
 			frappe.throw(_("Tamamlanmış bir aktarımın durumu değiştirilemez. Yeni bir kayıt oluşturun."))
-		input_changed = any(
-			(
-				self.import_file != persisted.import_file,
-				self.target_tour != persisted.target_tour,
-				self.worksheet_name != persisted.worksheet_name,
-			)
+		mapping = [(row.target_field, row.source_column) for row in self.get("column_mappings") or []]
+		old_mapping = [
+			(row.target_field, row.source_column) for row in persisted.get("column_mappings") or []
+		]
+		input_changed = (
+			self.import_file != persisted.import_file
+			or self.target_tour != persisted.target_tour
+			or cint(self.header_row or 1) != cint(persisted.header_row or 1)
+			or mapping != old_mapping
 		)
 		if not input_changed:
 			return
-		if persisted.status in {"Queued", "Processing", "Completed"}:
+		if persisted.status in {"Queued", "Processing", "Partially Completed", "Completed"}:
 			frappe.throw(
-				_(
-					"Kuyruktaki, işlenen veya tamamlanmış bir aktarımın dosyası, hedef turu ya da Excel sayfası değiştirilemez."
-				)
+				_("Kuyruktaki, işlenen veya tamamlanmış bir aktarımın kaynağı ya da eşlemesi değiştirilemez.")
 			)
 		if persisted.status in {"Validated", "Failed"}:
 			self.status = "Draft"
@@ -68,14 +70,25 @@ class UmreExcelImport(Document):
 			self.error_log = None
 			self.started_at = None
 			self.completed_at = None
+			self.set("staged_rows", [])
 
 
 @frappe.whitelist()
-def get_worksheet_names(docname: str) -> list[str]:
-	"""Return sheet names for the saved import document's attached file."""
+def inspect_headers(docname: str) -> list[str]:
+	"""Return the selected header row from a workbook that contains exactly one sheet."""
 	doc = frappe.get_doc("Umre Excel Import", docname)
 	doc.check_permission("read")
-	return get_import_worksheet_names(doc)
+	return inspect_import_headers(doc)
+
+
+@frappe.whitelist()
+def resolve_referral(docname: str, referral_text: str, referral_source: str) -> None:
+	resolve_import_referral(docname, referral_text, referral_source)
+
+
+@frappe.whitelist()
+def create_referral(docname: str, referral_text: str) -> str:
+	return create_import_referral(docname, referral_text)
 
 
 @frappe.whitelist()

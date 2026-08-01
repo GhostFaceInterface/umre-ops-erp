@@ -283,9 +283,11 @@ def _other_per_person(tour: str) -> float:
 	return flt(frappe.db.get_value("Other Cost Rule", rname, "per_person_cost") or 0)
 
 
-def required_system_types_for_booking(tour: str | None, statu: str) -> tuple[str, ...]:
+def required_system_types_for_booking(
+	tour: str | None, statu: str, cost_policy: str | None = None
+) -> tuple[str, ...]:
 	"""Dynamically required *system* component types (MEAL/OTHER if rules exist)."""
-	if (statu or "").strip() != PAYING_STATUS:
+	if (statu or "").strip() != PAYING_STATUS and cost_policy != "System Rules":
 		return SYSTEM_TYPES_FOR_NON_UMRECI
 	req: list[str] = list(_BASE_SYSTEM_TYPES_UMRECI)
 	if tour and meal_cost_rule_exists(tour):
@@ -467,7 +469,10 @@ def generate_components(
 	statu = (booking_doc.get("statu") or PAYING_STATUS).strip() or PAYING_STATUS
 	created: list[str] = []
 
-	if statu == PAYING_STATUS:
+	# New imports use the tour's system rules for every passenger status. The
+	# default policy remains Legacy Manual so historical non-paying bookings keep
+	# their existing MANUAL-only behavior.
+	if statu == PAYING_STATUS or booking_doc.get("cost_policy") == "System Rules":
 		# 1) HOTEL — sum all hotel rules for this tour at the booked oda_tipi.
 		hotel = _hotel_total(tour_name, booking_doc.get("oda_tipi"))
 		created.append(_make_component(
@@ -710,8 +715,10 @@ def assert_components_valid(booking) -> None:
 		or frappe.db.get_value("Umre Booking", booking_name, "statu")
 		or PAYING_STATUS
 	)
-	tour = frappe.db.get_value("Umre Booking", booking_name, "tur")
-	required: Iterable[str] = required_system_types_for_booking(tour, statu)
+	db_values = frappe.db.get_value("Umre Booking", booking_name, ["tur", "cost_policy"], as_dict=True) or {}
+	required: Iterable[str] = required_system_types_for_booking(
+		db_values.get("tur"), statu, db_values.get("cost_policy")
+	)
 
 	present = {
 		c["cost_type"]

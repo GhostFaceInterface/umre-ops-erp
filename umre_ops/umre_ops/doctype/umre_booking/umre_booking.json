@@ -18,10 +18,13 @@
   "yolcu_tipi",
   "vize_tipi",
   "ic_hat_baglanti",
+  "arrival_city",
+  "return_city",
   "operasyon_ve_odeme_bilgileri_section",
   "ucret",
   "manual_cost",
   "odenen",
+  "bildirilen_odenen",
   "kms",
   "odeme_turu",
   "payments_section",
@@ -36,7 +39,10 @@
   "diyanet_maliyeti",
   "financial_lock_section",
   "is_imported",
-  "locked_financials"
+  "locked_financials",
+  "cost_policy",
+  "cost_policy_version",
+  "import_row_key"
  ],
  "fields": [
   {
@@ -96,6 +102,16 @@
    "label": "iç hat bağlantı",
    "options": "Adana\nAdıyaman\nAfyonkarahisar\nAğrı\nAksaray\nAmasya\nAnkara\nAntalya\nArdahan\nArtvin\nAydın\nBalıkesir\nBartın\nBatman\nBayburt\nBilecik\nBingöl\nBitlis\nBolu\nBurdur\nBursa\nÇanakkale\nÇankırı\nÇorum\nDenizli\nDiyarbakır\nDüzce\nEdirne\nElazığ\nErzincan\nErzurum\nEskişehir\nGaziantep\nGiresun\nGümüşhane\nHakkari\nHatay\nIğdır\nIsparta\nİstanbul\nİzmir\nKahramanmaraş\nKarabük\nKaraman\nKars\nKastamonu\nKayseri\nKilis\nKırıkkale\nKırklareli\nKırşehir\nKocaeli\nKonya\nKütahya\nMalatya\nManisa\nMardin\nMersin\nMuğla\nMuş\nNevşehir\nNiğde\nOrdu\nOsmaniye\nRize\nSakarya\nSamsun\nSiirt\nSinop\nSivas\nŞanlıurfa\nŞırnak\nTekirdağ\nTokat\nTrabzon\nTunceli\nUşak\nVan\nYalova\nYozgat\nZonguldak",
    "reqd": 1
+  },
+  {
+   "fieldname": "arrival_city",
+   "fieldtype": "Data",
+   "label": "Geliş Şehri"
+  },
+  {
+   "fieldname": "return_city",
+   "fieldtype": "Data",
+   "label": "Dönüş Şehri"
   },
   {
    "fieldname": "kms",
@@ -184,13 +200,21 @@
    "fieldname": "kayit_tarihi",
    "fieldtype": "Date",
    "label": "Kayıt Tarihi",
-   "reqd": 1
+   "hidden": 1,
+   "description": "Legacy alan; yeni Excel aktarımları tarafından doldurulmaz."
   },
   {
    "fieldname": "odenen",
    "fieldtype": "Currency",
    "label": "Ödenen",
    "options": "Umre Tour:tur:para_birimi"
+  },
+  {
+   "fieldname": "bildirilen_odenen",
+   "fieldtype": "Currency",
+   "label": "Bildirilen Ödenen",
+   "options": "Umre Tour:tur:para_birimi",
+   "description": "Excel beyanıdır; tahsilat veya muhasebe hareketi değildir."
   },
   {
    "fieldname": "odeme_turu",
@@ -255,6 +279,30 @@
    "read_only": 1,
    "in_standard_filter": 1,
    "description": "1 olduğunda statu, ücret ve manuel maliyet alanları DEĞİŞTİRİLEMEZ. Excel doğruluğu için."
+  },
+  {
+   "default": "Legacy Manual",
+   "fieldname": "cost_policy",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Maliyet Politikası",
+   "options": "Legacy Manual\nSystem Rules",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cost_policy_version",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Maliyet Politikası Sürümü",
+   "read_only": 1
+  },
+  {
+   "fieldname": "import_row_key",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "İçe Aktarım Satır Anahtarı",
+   "read_only": 1,
+   "unique": 1
   }
  ],
  "grid_page_length": 50,

@@ -208,12 +208,13 @@ class BookingCalculationService:
 		vize_tipi = doc.get("vize_tipi")
 		diyanet_kart_var = doc.get("diyanet_kart_var")
 
-		if is_umreci:
+		uses_system_cost = is_umreci or doc.get("cost_policy") == "System Rules"
+		if uses_system_cost:
 			otel = lookup_hotel_cost(tur, oda_tipi)
 			ucak = lookup_flight_cost(tur, yolcu_tipi)
 			vize = lookup_visa_cost(tur, vize_tipi)
 			diy = lookup_diyanet_cost(tur, diyanet_kart_var)
-			revenue = flt(doc.get("ucret") or 0)
+			revenue = flt(doc.get("ucret") or 0) if is_umreci else 0.0
 			cost = flt(otel + ucak + vize + diy)
 			manual = 0.0
 		else:

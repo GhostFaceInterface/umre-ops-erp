@@ -144,10 +144,12 @@ def get_data(filters) -> list[dict]:
 		comp_total = flt(sum(flt(c["amount"] or 0) for c in comps))
 
 		bucket["kisi_sayisi"] += 1
+		# Every passenger consumes tour services. Revenue/collection remain UMRECI-only,
+		# but System Rules costs for HOCA/family/company statuses must reduce tour profit.
+		bucket["booking_cost"] += comp_total
 		if is_umreci:
 			bucket["gelir"] += ucret
 			bucket["tahsil_edilen"] += odenen
-		bucket["booking_cost"] += comp_total
 
 		st = bucket["statuses"].setdefault(
 			statu,

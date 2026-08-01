@@ -5,6 +5,8 @@
 # salvage_umre_tour_meal_columns_pre: file snapshot only (no CREATE/DROP) — see patches/patch_guard.py
 umre_ops.patches.reconcile_schema
 umre_ops.patches.salvage_umre_tour_meal_columns_pre
+umre_ops.patches.reset_legacy_open_excel_imports
+umre_ops.patches.canonicalize_umreci_identity
 
 [post_model_sync]
 umre_ops.patches.seed_phase2_operational_finance
@@ -21,3 +23,4 @@ umre_ops.patches.backfill_cost_components
 umre_ops.patches.sync_tour_diyanet_rule_para_birimi
 umre_ops.patches.backfill_payment_date_provenance
 umre_ops.patches.backfill_umre_tour_season
+umre_ops.patches.backfill_booking_cost_policy

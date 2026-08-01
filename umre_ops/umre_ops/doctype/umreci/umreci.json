@@ -40,8 +40,9 @@
    "fieldname": "tc_kimlik",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "TC Kimlik",
-   "reqd": 1
+   "label": "TC / Yabancı Kimlik",
+   "reqd": 1,
+   "unique": 1
   },
   {
    "fieldname": "dogum_tarihi",

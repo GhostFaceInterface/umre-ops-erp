@@ -9,72 +9,53 @@ import re
 import unicodedata
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from typing import Any
 from uuid import uuid4
 
 import frappe
 from frappe import _
-from frappe.utils import flt, getdate, now
+from frappe.utils import cint, flt, getdate, now
 from frappe.utils.background_jobs import is_job_enqueued
 from openpyxl import load_workbook
 
 DOCTYPE_IMPORT = "Umre Excel Import"
 DOCTYPE_UMRECI = "Umreci"
 DOCTYPE_BOOKING = "Umre Booking"
-RETRYABLE_IMPORT_ERRORS = (frappe.db.InternalError, frappe.RetryBackgroundJobError)
 DOCTYPE_REFERRAL = "Referral Source"
+RETRYABLE_IMPORT_ERRORS = (frappe.db.InternalError, frappe.RetryBackgroundJobError)
 
-REQUIRED_COLUMNS = (
-	"ADI",
-	"SOYADI",
-	"TC KİMLİK NO",
-	"DOĞUM TARİHİ",
-	"KAYIT TARİHİ",
-	"İÇ HAT BAĞLANTI",
-	"TELEFON NO",
-	"ODA SAYISI",
-	"KİMDEN",
-	"UYRUK",
-	"ÜCRET",
-	"ÖDENEN",
-	"KMS",
-)
-
-OPTIONAL_COLUMNS = (
-	"ÖDEME TARİHİ",
+IMPORT_FIELDS = (
+	"TC KİMLİK",
+	"AD",
+	"SOYAD",
 	"CİNSİYET",
-	"PASAPORT NO",
-	"MALİYET",
-	"AÇIKLAMA",
+	"UYRUK",
+	"DOĞUM TARİHİ",
+	"GELDİĞİ İL",
+	"ODA SAYISI",
+	"TELEFON NUMARASI",
+	"KİMDEN",
+	"ÖDEDİĞİ MİKTAR",
+	"YOLCU STATÜSÜ",
 )
-
-COLUMN_ALIASES = {
-	"ADI": ("AD", "ADI"),
-	"SOYADI": ("SOYAD", "SOYADI"),
-	"TC KİMLİK NO": ("TC", "TC KİMLİK NO", "TC KIMLIK NO"),
-	"DOĞUM TARİHİ": ("DOĞUM TARİHİ", "DOGUM TARIHI", "DOĞUM TARIHI"),
-	"KAYIT TARİHİ": ("KAYIT TARİHİ", "KAYIT TARIHI", "REGISTRATION DATE"),
-	"ÖDEME TARİHİ": (
-		"ÖDEME TARİHİ",
-		"ÖDEME TARIHI",
-		"ODEME TARIHI",
-		"TAHSİLAT TARİHİ",
-		"TAHSILAT TARIHI",
-		"PAYMENT DATE",
-	),
-	"İÇ HAT BAĞLANTI": ("GELDİĞİ İL", "GELDIGI IL", "İÇ HAT BAĞLANTI", "IC HAT BAGLANTI"),
-	"TELEFON NO": ("TELEFON", "TELEFON NO", "TELEFON NUMARASI"),
-	"ODA SAYISI": ("ODA", "ODA SAYISI", "ODA TİPİ", "ODA TIPI"),
-	"KİMDEN": ("KİMDEN", "KIMDEN", "REFERANS", "KAYNAK"),
-	"UYRUK": ("UYRUK", "UYRUĞU", "UYRUGU"),
-	"ÜCRET": ("ÜCRET", "UCRET", "FİYAT", "FIYAT"),
-	"ÖDENEN": ("ÖDENEN", "ODENEN", "ÖDEDİĞİ MİKTAR", "ODEDIGI MIKTAR"),
-	"KMS": ("KMS",),
-	"CİNSİYET": ("CİNSİYET", "CINSIYET", "CİNS", "CINS"),
-	"PASAPORT NO": ("PASAPORT NO", "PASAPORT", "PASSPORT NO", "PASSPORT"),
-	"MALİYET": ("MALİYET", "MALIYET"),
-	"AÇIKLAMA": ("AÇIKLAMA", "ACIKLAMA", "NOT", "NOTLAR"),
+STATUS_ALLOWLIST = {
+	"HOCA",
+	"UMRECI",
+	"HOCA_ESI",
+	"HOCA_COCUGU",
+	"SIRKET_MUDURU",
+	"SIRKET_MUDURU_ESI",
+	"SIRKET_MUDURU_COCUGU",
+}
+NATIONALITY_CODES = {
+	"tc": "TC",
+	"tr": "TC",
+	"tur": "TC",
+	"turkiye": "TC",
+	"turk": "TC",
+	"turkish": "TC",
 }
 
 TURKISH_PROVINCES = (
@@ -177,79 +158,43 @@ class ImportSourceSnapshot:
 	status: str
 	import_file: str | None
 	target_tour: str | None
-	worksheet_name: str | None
-
-
-def make_source_snapshot(import_doc) -> ImportSourceSnapshot:
-	return ImportSourceSnapshot(
-		status=import_doc.status,
-		import_file=import_doc.import_file,
-		target_tour=import_doc.target_tour,
-		worksheet_name=import_doc.worksheet_name,
-	)
-
-
-def validate_dry_run_snapshot(snapshot: ImportSourceSnapshot, current_doc) -> None:
-	if current_doc.status in {"Queued", "Processing", "Completed"}:
-		frappe.throw(_("Bu aktarımın durumu değişti; kuru çalıştırma sonucu kaydedilmedi."))
-	if make_source_snapshot(current_doc) != snapshot:
-		frappe.throw(
-			_(
-				"Dosya, hedef tur, Excel sayfası veya durum kuru çalıştırma sırasında değişti; sonuç kaydedilmedi."
-			)
-		)
-
-
-def attempt_can_run(current_doc, attempt_id: str) -> bool:
-	return current_doc.job_id == attempt_id and current_doc.status in {"Queued", "Processing"}
+	header_row: int
+	mapping_signature: str
 
 
 def header_key(value: Any) -> str:
-	text = "" if value is None else str(value)
-	text = re.sub(r"\s+", " ", text).strip()
+	text = re.sub(r"\s+", " ", "" if value is None else str(value)).strip()
 	text = text.replace("ı", "i").replace("İ", "I")
 	text = unicodedata.normalize("NFKD", text)
-	text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
-	return text.casefold()
+	return "".join(ch for ch in text if unicodedata.category(ch) != "Mn").casefold()
 
 
 def preserve_excel_text(value: Any) -> str:
 	if is_blank(value):
 		return ""
-	return str(value)
+	if isinstance(value, float) and value.is_integer():
+		return str(int(value))
+	return str(value).strip()
 
 
 def is_blank(value: Any) -> bool:
-	if value is None:
-		return True
-	if isinstance(value, str):
-		return not value.strip()
-	return False
+	return value is None or (isinstance(value, str) and not value.strip())
 
 
 def normalize_tc(value: Any) -> str | None:
-	if is_blank(value):
-		return None
-	if isinstance(value, float) and value == int(value):
-		text = str(int(value))
-	else:
-		text = str(value).strip()
-		if text.endswith(".0") and text[:-2].isdigit():
-			text = text[:-2]
+	text = re.sub(r"\s+", "", preserve_excel_text(value)).upper()
 	if not text:
 		return None
+	if text.endswith(".0") and text[:-2].isdigit():
+		text = text[:-2]
 	if text.isdigit() and len(text) == 10:
 		text = text.zfill(11)
 	return text
 
 
 def sanitize_phone(value: Any) -> str | None:
-	if is_blank(value):
-		return None
-	cleaned = "".join(ch for ch in str(value) if ch.isdigit())
-	if cleaned.startswith("5") and len(cleaned) == 10:
-		cleaned = "0" + cleaned
-	return cleaned or None
+	text = preserve_excel_text(value)
+	return text or None
 
 
 def parse_date(value: Any) -> str | None:
@@ -268,27 +213,61 @@ def parse_date(value: Any) -> str | None:
 def safe_float(value: Any) -> float:
 	if is_blank(value):
 		return 0.0
-	if isinstance(value, str):
-		value = (
-			value.replace(".", "").replace(",", ".")
-			if re.match(r"^-?\d{1,3}(\.\d{3})*,\d+$", value.strip())
-			else value.replace(",", ".")
-		)
-	return flt(value)
+	if isinstance(value, bool):
+		frappe.throw(_("Sayısal değer geçersiz: {0}").format(repr(value)))
+	text = preserve_excel_text(value)
+	if re.fullmatch(r"-?\d{1,3}(\.\d{3})*,\d+", text):
+		text = text.replace(".", "").replace(",", ".")
+	elif re.fullmatch(r"-?\d{1,3}(,\d{3})*\.\d+", text):
+		text = text.replace(",", "")
+	elif re.fullmatch(r"-?\d+(?:,\d+)?", text):
+		text = text.replace(",", ".")
+	elif not re.fullmatch(r"-?\d+(?:\.\d+)?", text):
+		frappe.throw(_("Sayısal değer geçersiz: {0}").format(repr(value)))
+	try:
+		return float(Decimal(text))
+	except (InvalidOperation, ValueError):
+		frappe.throw(_("Sayısal değer geçersiz: {0}").format(repr(value)))
 
 
 def map_oda_tipi(value: Any) -> str:
-	m = re.search(r"[1-4]", str(value or ""))
-	return f"{m.group(0)} Kişilik" if m else "2 Kişilik"
+	match = re.fullmatch(
+		r"\s*([1-4])(?:\s*(?:kişi(?:lik)?|kisi(?:lik)?))?\s*", preserve_excel_text(value), re.I
+	)
+	if not match:
+		frappe.throw(_("ODA SAYISI yalnızca 1, 2, 3 veya 4 olabilir."))
+	return f"{match.group(1)} Kişilik"
 
 
 def normalize_cinsiyet(value: Any) -> str:
 	key = header_key(value)
-	if key in {"mrs", "ms", "female", "kadin", "bayan"}:
+	if key == "mrs":
 		return "MRS"
-	if key in {"mr", "male", "erkek", "bay"}:
+	if key == "mr":
 		return "MR"
-	return "MR"
+	frappe.throw(_("CİNSİYET MR veya MRS olmalıdır."))
+
+
+def normalize_nationality(value: Any) -> str:
+	text = preserve_excel_text(value)
+	if not text:
+		frappe.throw(_("UYRUK zorunludur."))
+	key = header_key(text)
+	code = NATIONALITY_CODES.get(key, text.upper())
+	if not re.fullmatch(r"[A-Z]{1,3}", code):
+		frappe.throw(_("UYRUK 1-3 harfli bir kod olmalıdır (ör. TC, D, GB)."))
+	return code
+
+
+def normalize_status(value: Any) -> str:
+	status = re.sub(r"[\s-]+", "_", header_key(value)).upper()
+	status = {
+		"SIRKET_MUDURUNUN_ESI": "SIRKET_MUDURU_ESI",
+		"SIRKET_MUDURUNUN_COCUGU": "SIRKET_MUDURU_COCUGU",
+	}.get(status, status)
+	if status not in STATUS_ALLOWLIST:
+		frappe.throw(_("YOLCU STATÜSÜ geçersiz: {0}").format(preserve_excel_text(value)))
+	return status
 
 
 def _city_compare_key(value: Any) -> str:
@@ -298,37 +277,70 @@ def _city_compare_key(value: Any) -> str:
 CITY_LOOKUP = {_city_compare_key(city): city for city in TURKISH_PROVINCES}
 
 
-def normalize_city(value: Any) -> str | None:
-	if is_blank(value):
-		return None
-	key = _city_compare_key(value)
-	if key in CITY_LOOKUP:
-		return CITY_LOOKUP[key]
-	frappe.throw(_("İl adı eşleşmedi: {0}").format(repr(value)))
+def normalize_city(value: Any) -> str:
+	city = CITY_LOOKUP.get(_city_compare_key(value))
+	if not city:
+		frappe.throw(_("İl adı eşleşmedi: {0}").format(repr(value)))
+	return city
 
 
-def _alias_lookup() -> dict[str, str]:
-	lookup = {}
-	for logical, aliases in COLUMN_ALIASES.items():
-		for alias in aliases:
-			lookup[header_key(alias)] = logical
-	return lookup
+def split_cities(value: Any) -> tuple[str, str]:
+	text = preserve_excel_text(value)
+	if not text:
+		frappe.throw(_("GELDİĞİ İL zorunludur."))
+	parts = [part.strip() for part in re.split(r"\s*(?:-|/|→)\s*", text, maxsplit=1)]
+	arrival = normalize_city(parts[0])
+	return_city = normalize_city(parts[1]) if len(parts) == 2 and parts[1] else arrival
+	return arrival, return_city
 
 
-def _get_import_file(import_doc):
+def _mapping_rows(import_doc) -> list[dict[str, str]]:
+	return sorted(
+		(
+			{"target_field": row.target_field, "source_column": row.source_column}
+			for row in import_doc.get("column_mappings") or []
+		),
+		key=lambda row: row["target_field"],
+	)
+
+
+def _mapping_signature(import_doc) -> str:
+	return hashlib.sha256(
+		json.dumps(_mapping_rows(import_doc), ensure_ascii=False, sort_keys=True).encode()
+	).hexdigest()
+
+
+def make_source_snapshot(import_doc) -> ImportSourceSnapshot:
+	return ImportSourceSnapshot(
+		import_doc.status,
+		import_doc.import_file,
+		import_doc.target_tour,
+		cint(import_doc.header_row or 1),
+		_mapping_signature(import_doc),
+	)
+
+
+def validate_dry_run_snapshot(snapshot: ImportSourceSnapshot, current_doc) -> None:
+	if current_doc.status in {"Queued", "Processing", "Completed"}:
+		frappe.throw(_("Bu aktarımın durumu değişti; kuru çalıştırma sonucu kaydedilmedi."))
+	if make_source_snapshot(current_doc) != snapshot:
+		frappe.throw(
+			_("Dosya, hedef tur, başlık satırı, kolon eşlemesi veya durum değişti; sonuç kaydedilmedi.")
+		)
+
+
+def attempt_can_run(current_doc, attempt_id: str) -> bool:
+	return current_doc.job_id == attempt_id and current_doc.status in {"Queued", "Processing"}
+
+
+def _get_file_content(import_doc) -> bytes:
 	file_name = frappe.db.get_value("File", {"file_url": import_doc.import_file}, "name")
 	if not file_name:
 		frappe.throw(_("Yüklenen Excel dosyası bulunamadı."))
 	file_doc = frappe.get_doc("File", file_name)
 	file_doc.check_permission("read")
-	return file_doc
-
-
-def _get_file_content(import_doc) -> bytes:
-	content = _get_import_file(import_doc).get_content()
-	if isinstance(content, str):
-		content = content.encode()
-	return bytes(content)
+	content = file_doc.get_content()
+	return content.encode() if isinstance(content, str) else bytes(content)
 
 
 def _open_workbook(content: bytes):
@@ -338,371 +350,452 @@ def _open_workbook(content: bytes):
 		frappe.throw(_("Excel dosyası okunamadı. Geçerli bir .xlsx dosyası yükleyin."))
 
 
-def _worksheet_names_from_content(content: bytes) -> list[str]:
+def _read_single_worksheet(content: bytes) -> list[list[Any]]:
 	workbook = _open_workbook(content)
 	try:
-		return list(workbook.sheetnames)
+		if len(workbook.sheetnames) != 1:
+			frappe.throw(_("İçe aktarım dosyası tam olarak bir fiziksel çalışma sayfası içermelidir."))
+		return [list(row) for row in workbook[workbook.sheetnames[0]].iter_rows(values_only=True)]
 	finally:
 		workbook.close()
 
 
-def get_worksheet_names(import_doc) -> list[str]:
-	return _worksheet_names_from_content(_get_file_content(import_doc))
+def inspect_headers(import_doc, content: bytes | None = None) -> list[str]:
+	rows = _read_single_worksheet(content or _get_file_content(import_doc))
+	header_row = cint(import_doc.header_row or 1)
+	if header_row < 1 or header_row > len(rows):
+		frappe.throw(_("Başlık satırı Excel dosyasının dışında."))
+	return [preserve_excel_text(value) for value in rows[header_row - 1] if not is_blank(value)]
 
 
-def _read_selected_worksheet(content: bytes, worksheet_name: str | None) -> list[list[Any]]:
-	workbook = _open_workbook(content)
-	try:
-		sheet_names = list(workbook.sheetnames)
-		if not sheet_names:
-			frappe.throw(_("Excel dosyasında çalışma sayfası bulunamadı."))
-		if not worksheet_name:
-			if len(sheet_names) > 1:
-				frappe.throw(
-					_("Excel dosyasında birden fazla sayfa var. Lütfen içe aktarılacak sayfayı seçin.")
-				)
-			worksheet_name = sheet_names[0]
-		if worksheet_name not in sheet_names:
-			frappe.throw(_("Seçilen Excel sayfası dosyada bulunamadı: {0}").format(worksheet_name))
-		worksheet = workbook[worksheet_name]
-		return [list(row) for row in worksheet.iter_rows(values_only=True)]
-	finally:
-		workbook.close()
+def _validated_mapping(import_doc, headers: list[str]) -> dict[str, str]:
+	normalized_headers = [header_key(header) for header in headers if header]
+	if len(normalized_headers) != len(set(normalized_headers)):
+		frappe.throw(_("Başlık satırında yinelenen kolon adları var."))
+	header_by_key = {header_key(header): header for header in headers}
+	mapping: dict[str, str] = {}
+	for row in import_doc.get("column_mappings") or []:
+		target = preserve_excel_text(row.target_field)
+		source = header_by_key.get(header_key(row.source_column))
+		if target in mapping:
+			frappe.throw(_("Aynı hedef alan birden fazla kez eşlenemez: {0}").format(target))
+		if target not in IMPORT_FIELDS or not source:
+			frappe.throw(_("Geçersiz kolon eşlemesi: {0} → {1}").format(row.source_column, target))
+		mapping[target] = source
+	missing = [field for field in IMPORT_FIELDS if field not in mapping]
+	if missing:
+		frappe.throw(_("Eksik zorunlu eşlemeler: {0}").format(", ".join(missing)))
+	if len({header_key(value) for value in mapping.values()}) != len(mapping):
+		frappe.throw(_("Bir Excel kolonu birden fazla hedef alana eşlenemez."))
+	return mapping
+
+
+def _read_rows(import_doc, content: bytes | None = None) -> list[tuple[int, dict[str, Any]]]:
+	raw_rows = _read_single_worksheet(content or _get_file_content(import_doc))
+	header_idx = cint(import_doc.header_row or 1) - 1
+	if header_idx < 0 or header_idx >= len(raw_rows):
+		frappe.throw(_("Başlık satırı Excel dosyasının dışında."))
+	headers = [preserve_excel_text(value) for value in raw_rows[header_idx]]
+	mapping = _validated_mapping(import_doc, headers)
+	index_by_header = {header_key(value): idx for idx, value in enumerate(headers) if value}
+	result = []
+	for row_number, raw in enumerate(raw_rows[header_idx + 1 :], start=header_idx + 2):
+		if not raw or all(is_blank(cell) for cell in raw):
+			continue
+		result.append(
+			(
+				row_number,
+				{
+					target: raw[index_by_header[header_key(source)]]
+					if index_by_header[header_key(source)] < len(raw)
+					else None
+					for target, source in mapping.items()
+				},
+			)
+		)
+	return result
 
 
 def build_validation_signature(import_doc, content: bytes | None = None) -> str:
-	content = content if content is not None else _get_file_content(import_doc)
 	payload = {
-		"content_hash": hashlib.sha256(content).hexdigest(),
+		"content_hash": hashlib.sha256(content or _get_file_content(import_doc)).hexdigest(),
 		"target_tour": import_doc.target_tour or "",
-		"worksheet_name": import_doc.worksheet_name or "",
+		"header_row": cint(import_doc.header_row or 1),
+		"mapping": _mapping_rows(import_doc),
 	}
 	return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
 def verify_validation_signature(import_doc, content: bytes | None = None) -> None:
-	if not import_doc.validation_signature:
-		frappe.throw(_("Kayıtlı doğrulama bilgisi bulunamadı. Lütfen kuru çalıştırmayı yeniden yapın."))
-	if import_doc.validation_signature != build_validation_signature(import_doc, content):
+	if not import_doc.validation_signature or import_doc.validation_signature != build_validation_signature(
+		import_doc, content
+	):
 		frappe.throw(
 			_(
-				"Dosya, hedef tur veya Excel sayfası doğrulamadan sonra değişti. Lütfen kuru çalıştırmayı yeniden yapın."
+				"Dosya, hedef tur, başlık satırı veya kolon eşlemesi doğrulamadan sonra değişti. "
+				"Kuru çalıştırmayı yenileyin."
 			)
 		)
 
 
-def _read_rows(import_doc, content: bytes | None = None) -> tuple[list[str], list[dict[str, Any]]]:
-	content = content if content is not None else _get_file_content(import_doc)
-	raw_rows = _read_selected_worksheet(content, import_doc.worksheet_name)
-	if not raw_rows:
-		frappe.throw(_("Seçilen Excel sayfası boş."))
-
-	header = raw_rows[0]
-	lookup = _alias_lookup()
-	index_by_logical = {}
-	seen = set()
-	for idx, cell in enumerate(header):
-		logical = lookup.get(header_key(cell))
-		if logical and logical not in seen:
-			index_by_logical[logical] = idx
-			seen.add(logical)
-
-	missing = [col for col in REQUIRED_COLUMNS if col not in index_by_logical]
-	if missing:
-		frappe.throw(_("Missing required Excel columns: {0}").format(", ".join(missing)))
-
-	rows = []
-	for raw in raw_rows[1:]:
-		if not raw or all(is_blank(cell) for cell in raw):
-			continue
-		mapped = {}
-		for logical in (*REQUIRED_COLUMNS, *OPTIONAL_COLUMNS):
-			idx = index_by_logical.get(logical)
-			mapped[logical] = raw[idx] if idx is not None and idx < len(raw) else None
-		rows.append(mapped)
-	return list(index_by_logical), rows
+def _find_existing_umreci(tc: str) -> str | None:
+	names = frappe.get_all(
+		DOCTYPE_UMRECI,
+		filters={"tc_kimlik": tc},
+		pluck="name",
+		order_by="creation asc",
+		limit_page_length=2,
+	)
+	if not names:
+		# Compatibility for legacy identifiers saved with embedded whitespace.
+		names = [
+			row[0]
+			for row in frappe.db.sql(
+				"""
+				select name
+				from `tabUmreci`
+				where replace(replace(replace(tc_kimlik, ' ', ''), char(9), ''), char(10), '') = %s
+				order by creation asc
+				limit 2
+				""",
+				(tc,),
+			)
+		]
+	if len(names) > 1:
+		frappe.throw(_("Aynı TC / Yabancı Kimlik ile birden fazla Umreci kaydı bulundu: {0}").format(tc))
+	return names[0] if names else None
 
 
-def _update_import_doc(
-	docname: str,
-	summary: ImportSummary,
-	row_log: list[dict],
-	status: str,
-	error_log: str | None = None,
-	validation_signature: str | None = None,
-	worksheet_name: str | None = None,
-	dry_run_snapshot: ImportSourceSnapshot | None = None,
-) -> None:
-	if dry_run_snapshot is not None:
-		current = frappe.db.sql(
-			"""
-			select status, import_file, target_tour, worksheet_name
-			from `tabUmre Excel Import`
-			where name = %s
-			for update
-			""",
-			docname,
-			as_dict=True,
+def _find_existing_booking(umreci: str, tur: str) -> str | None:
+	names = frappe.get_all(
+		DOCTYPE_BOOKING,
+		filters={"umreci": umreci, "tur": tur},
+		pluck="name",
+		order_by="creation asc",
+		limit_page_length=2,
+	)
+	if len(names) > 1:
+		frappe.throw(
+			_("Aynı yolcu ve tur için birden fazla rezervasyon bulundu; manuel inceleme gerekli.")
 		)
-		if not current:
-			frappe.throw(_("İçe aktarım kaydı bulunamadı; kuru çalıştırma sonucu kaydedilmedi."))
-		validate_dry_run_snapshot(dry_run_snapshot, current[0])
-	doc = frappe.get_doc(DOCTYPE_IMPORT, docname)
+	return names[0] if names else None
+
+
+def _lock_import_materialization() -> None:
+	"""Serialize actual import materialization to protect TC and (passenger, tour) identity."""
+	locked = frappe.db.sql(
+		"""
+		select name
+		from `tabUmre Excel Import`
+		order by creation asc, name asc
+		limit 1
+		for update
+		"""
+	)
+	if not locked:
+		frappe.throw(_("İçe aktarım kilidi alınamadı."))
+
+
+def _tour_room_price(tour: str, oda_tipi: str) -> float:
+	field = {
+		"1 Kişilik": "bir_kisilik_oda",
+		"2 Kişilik": "iki_kisilik_oda",
+		"3 Kişilik": "uc_kisilik_oda",
+		"4 Kişilik": "dort_kisilik_oda",
+	}[oda_tipi]
+	return flt(frappe.db.get_value("Umre Tour", tour, field) or 0)
+
+
+def _normalize_row(row: dict[str, Any], tour: str) -> dict[str, Any]:
+	tc = normalize_tc(row["TC KİMLİK"])
+	if not tc:
+		frappe.throw(_("TC / Yabancı Kimlik zorunludur."))
+	arrival, return_city = split_cities(row["GELDİĞİ İL"])
+	room = map_oda_tipi(row["ODA SAYISI"])
+	status = normalize_status(row["YOLCU STATÜSÜ"])
+	paid = safe_float(row["ÖDEDİĞİ MİKTAR"])
+	if paid < 0:
+		frappe.throw(_("ÖDEDİĞİ MİKTAR negatif olamaz."))
+	if status != "UMRECI" and paid:
+		frappe.throw(_("Yalnız UMRECI statüsündeki yolcular için ödenen miktar girilebilir."))
+	birth = parse_date(row["DOĞUM TARİHİ"])
+	if not birth:
+		frappe.throw(_("DOĞUM TARİHİ geçerli bir tarih olmalıdır."))
+	ad = preserve_excel_text(row["AD"])
+	soyad = preserve_excel_text(row["SOYAD"])
+	if not ad or not soyad:
+		frappe.throw(_("AD ve SOYAD zorunludur."))
+	price = _tour_room_price(tour, room) if status == "UMRECI" else 0
+	if status == "UMRECI" and price <= 0:
+		frappe.throw(_("Seçilen oda tipi için hedef turda pozitif bir fiyat tanımlanmalıdır."))
+	return {
+		"tc_kimlik": tc,
+		"ad": ad,
+		"soyad": soyad,
+		"cinsiyet": normalize_cinsiyet(row["CİNSİYET"]),
+		"uyruk": normalize_nationality(row["UYRUK"]),
+		"dogum_tarihi": birth,
+		"telefon_numarasi": sanitize_phone(row["TELEFON NUMARASI"]),
+		"oda_tipi": room,
+		"arrival_city": arrival,
+		"return_city": return_city,
+		"referral_text": preserve_excel_text(row["KİMDEN"]),
+		"statu": status,
+		"ucret": price,
+		"bildirilen_odenen": paid,
+		"odenen": 0,
+	}
+
+
+def _row_key(tour: str, normalized: dict[str, Any]) -> str:
+	payload = {key: value for key, value in normalized.items() if key != "referral_text"}
+	payload["tour"] = tour
+	return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+
+
+def _booking_matches(booking, normalized: dict[str, Any], referral: str | None) -> bool:
+	fields = ("oda_tipi", "arrival_city", "return_city", "statu", "ucret", "bildirilen_odenen", "odenen")
+	for field in fields:
+		left, right = booking.get(field), normalized.get(field)
+		if field in {"ucret", "bildirilen_odenen", "odenen"}:
+			if abs(flt(left) - flt(right)) > 0.000001:
+				return False
+		elif (left or "") != (right or ""):
+			return False
+	return (booking.get("kimden_geldi") or "") == (referral or "")
+
+
+def _umreci_matches(umreci, normalized: dict[str, Any]) -> bool:
+	return (
+		normalize_tc(umreci.get("tc_kimlik")) == normalized["tc_kimlik"]
+		and header_key(umreci.get("ad")) == header_key(normalized["ad"])
+		and header_key(umreci.get("soyad")) == header_key(normalized["soyad"])
+		and all(
+			str(umreci.get(field) or "") == str(normalized.get(field) or "")
+			for field in ("cinsiyet", "dogum_tarihi", "uyruk", "telefon_numarasi")
+		)
+	)
+
+
+def _stage_row(
+	import_doc,
+	row_number: int,
+	raw: dict[str, Any],
+	normalized: dict[str, Any] | None,
+	status: str,
+	message: str | None = None,
+	referral: str | None = None,
+) -> dict[str, Any]:
+	key = (
+		_row_key(import_doc.target_tour, normalized)
+		if normalized
+		else hashlib.sha256(f"{import_doc.name}:{row_number}".encode()).hexdigest()
+	)
+	return {
+		"row_number": row_number,
+		"row_key": key,
+		"tc_kimlik": normalized.get("tc_kimlik") if normalized else normalize_tc(raw.get("TC KİMLİK")),
+		"raw_data": json.dumps(raw, ensure_ascii=False, default=str),
+		"normalized_data": json.dumps(normalized, ensure_ascii=False, default=str) if normalized else None,
+		"row_status": status,
+		"referral_text": normalized.get("referral_text")
+		if normalized
+		else preserve_excel_text(raw.get("KİMDEN")),
+		"referral_source": referral,
+		"message": message,
+	}
+
+
+def _resolved_referral(import_doc, normalized: dict[str, Any]) -> str | None:
+	text = normalized["referral_text"]
+	if text and frappe.db.exists(DOCTYPE_REFERRAL, text):
+		return text
+	if text:
+		text_key = header_key(text)
+		for existing in frappe.get_all(DOCTYPE_REFERRAL, pluck="name", limit_page_length=0):
+			if header_key(existing) == text_key:
+				return existing
+	for staged in import_doc.get("staged_rows") or []:
+		if (
+			header_key(staged.referral_text) == header_key(text)
+			and staged.referral_source
+			and frappe.db.exists(DOCTYPE_REFERRAL, staged.referral_source)
+		):
+			return staged.referral_source
+	return None
+
+
+def _process_row(
+	import_doc, row_number: int, raw: dict[str, Any], summary: ImportSummary, dry_run: bool
+) -> dict[str, Any]:
+	normalized = _normalize_row(raw, import_doc.target_tour)
+	referral = _resolved_referral(import_doc, normalized)
+	if not referral:
+		return _stage_row(
+			import_doc,
+			row_number,
+			raw,
+			normalized,
+			"Pending Referral",
+			_("Referans kaynağı eşlenmeli veya açık eylemle oluşturulmalı."),
+		)
+	existing_umreci = _find_existing_umreci(normalized["tc_kimlik"])
+	if existing_umreci:
+		umreci = frappe.get_doc(DOCTYPE_UMRECI, existing_umreci)
+		if not _umreci_matches(umreci, normalized):
+			return _stage_row(
+				import_doc,
+				row_number,
+				raw,
+				normalized,
+				"Pending Conflict",
+				_("Aynı kimlik için farklı yolcu bilgileri mevcut; manuel inceleme gerekli."),
+				referral,
+			)
+		existing_booking = _find_existing_booking(existing_umreci, import_doc.target_tour)
+		if existing_booking:
+			booking = frappe.get_doc(DOCTYPE_BOOKING, existing_booking)
+			status = (
+				"No-op" if _booking_matches(booking, normalized, referral) else "Pending Conflict"
+			)
+			message = (
+				None if status == "No-op" else _("Aynı kimlik ve tur için farklı verili rezervasyon mevcut.")
+			)
+			return _stage_row(import_doc, row_number, raw, normalized, status, message, referral)
+	if dry_run:
+		return _stage_row(import_doc, row_number, raw, normalized, "Ready", referral=referral)
+
+	frappe.db.savepoint(f"excel_import_row_{row_number}")
+	try:
+		if existing_umreci:
+			umreci = frappe.get_doc(DOCTYPE_UMRECI, existing_umreci)
+		else:
+			umreci = frappe.new_doc(DOCTYPE_UMRECI)
+			umreci.update(
+				{
+					key: normalized[key]
+					for key in (
+						"ad",
+						"soyad",
+						"cinsiyet",
+						"tc_kimlik",
+						"dogum_tarihi",
+						"uyruk",
+						"telefon_numarasi",
+					)
+				}
+			)
+			umreci.save()
+			summary.created_umreci += 1
+		booking = frappe.get_doc(
+			{
+				"doctype": DOCTYPE_BOOKING,
+				"umreci": umreci.name,
+				"tur": import_doc.target_tour,
+				"oda_tipi": normalized["oda_tipi"],
+				"kimden_geldi": referral,
+				"arrival_city": normalized["arrival_city"],
+				"return_city": normalized["return_city"],
+				"ic_hat_baglanti": normalized["arrival_city"],
+				"statu": normalized["statu"],
+				"ucret": normalized["ucret"],
+				"bildirilen_odenen": normalized["bildirilen_odenen"],
+				"odenen": 0,
+				"cost_policy": "System Rules",
+				"cost_policy_version": "1",
+				"import_row_key": _row_key(import_doc.target_tour, normalized),
+				"is_imported": 1,
+				"locked_financials": 1,
+			}
+		)
+		booking.insert()
+		summary.created_bookings += 1
+		staged = _stage_row(import_doc, row_number, raw, normalized, "Imported", referral=referral)
+		staged["message"] = booking.name
+		return staged
+	except Exception:
+		frappe.db.rollback(save_point=f"excel_import_row_{row_number}")
+		raise
+
+
+def _save_result(
+	import_doc,
+	snapshot,
+	summary: ImportSummary,
+	rows: list[dict],
+	status: str,
+	signature: str | None = None,
+	error_log: str | None = None,
+) -> None:
+	if snapshot:
+		locked = frappe.db.sql(
+			"select name from `tabUmre Excel Import` where name=%s for update", import_doc.name
+		)
+		if not locked:
+			frappe.throw(_("İçe aktarım kaydı bulunamadı."))
+		validate_dry_run_snapshot(snapshot, frappe.get_doc(DOCTYPE_IMPORT, import_doc.name))
+	doc = frappe.get_doc(DOCTYPE_IMPORT, import_doc.name)
 	doc.flags.ignore_import_source_guard = True
 	doc.status = status
 	for field, value in asdict(summary).items():
 		doc.set(field, value)
-	doc.row_log = json.dumps(row_log, ensure_ascii=False, indent=2)
-	doc.dry_run_result = json.dumps(
-		{"summary": asdict(summary), "rows": row_log}, ensure_ascii=False, indent=2
-	)
+	doc.set("staged_rows", [])
+	for row in rows:
+		doc.append("staged_rows", row)
+	doc.row_log = json.dumps(rows, ensure_ascii=False, indent=2)
+	doc.dry_run_result = json.dumps({"summary": asdict(summary), "rows": rows}, ensure_ascii=False, indent=2)
 	doc.error_log = error_log
-	if validation_signature is not None:
-		doc.validation_signature = validation_signature
-	if worksheet_name is not None:
-		doc.worksheet_name = worksheet_name
-	if status in {"Completed", "Failed", "Validated"}:
+	if signature is not None:
+		doc.validation_signature = signature
+	if status in {"Validated", "Partially Completed", "Completed", "Failed"}:
 		doc.completed_at = now()
 	doc.save(ignore_permissions=True)
 	frappe.db.commit()
 
 
-def _find_existing_umreci(tc: str) -> str | None:
-	return frappe.db.get_value(DOCTYPE_UMRECI, {"tc_kimlik": tc}, "name")
-
-
-def _find_existing_booking(umreci: str, tur: str) -> str | None:
-	return frappe.db.get_value(DOCTYPE_BOOKING, {"umreci": umreci, "tur": tur}, "name")
-
-
-def _get_or_create_referral(value: Any, dry_run: bool) -> str | None:
-	name = preserve_excel_text(value).strip()
-	if not name:
-		return None
-	if frappe.db.exists(DOCTYPE_REFERRAL, name):
-		return name
+def _final_status(summary: ImportSummary, *, dry_run: bool, rows: list[dict]) -> str:
+	if summary.row_errors:
+		return "Failed"
 	if dry_run:
-		return name
-	ref = frappe.get_doc({"doctype": DOCTYPE_REFERRAL, "kaynak_adi": name})
-	ref.insert()
-	return ref.name
-
-
-def _umreci_payload(row: dict[str, Any], tc: str) -> dict[str, Any]:
-	return {
-		"ad": preserve_excel_text(row["ADI"]),
-		"soyad": preserve_excel_text(row["SOYADI"]),
-		"cinsiyet": normalize_cinsiyet(row.get("CİNSİYET")),
-		"tc_kimlik": tc,
-		"dogum_tarihi": parse_date(row["DOĞUM TARİHİ"]),
-		"uyruk": preserve_excel_text(row["UYRUK"]) or "TC",
-		"telefon_numarasi": sanitize_phone(row["TELEFON NO"]),
-	}
-
-
-def _booking_payload(row: dict[str, Any], umreci_name: str, tur_name: str, dry_run: bool) -> dict[str, Any]:
-	registration_date = parse_date(row.get("KAYIT TARİHİ"))
-	if not registration_date:
-		frappe.throw(_("KAYIT TARİHİ is required and must contain a valid date."))
-	return {
-		"umreci": umreci_name,
-		"tur": tur_name,
-		"oda_tipi": map_oda_tipi(row["ODA SAYISI"]),
-		"ic_hat_baglanti": normalize_city(row["İÇ HAT BAĞLANTI"]),
-		"kimden_geldi": _get_or_create_referral(row["KİMDEN"], dry_run=dry_run),
-		"kms": safe_float(row["KMS"]),
-		"ucret": safe_float(row["ÜCRET"]),
-		"kayit_tarihi": registration_date,
-		"not": preserve_excel_text(row.get("AÇIKLAMA")) or None,
-	}
-
-
-def _upsert_payment_row(booking, row: dict[str, Any], import_name: str, row_number: int) -> str | None:
-	amount = safe_float(row["ÖDENEN"])
-	if not amount:
-		return None
-	if amount < 0:
-		frappe.throw(_("ÖDENEN must be greater than 0 when a payment is supplied."))
-	payment_date = parse_date(row.get("ÖDEME TARİHİ"))
-	if not payment_date:
-		frappe.throw(_("ÖDEME TARİHİ is required when ÖDENEN is greater than 0."))
-	key = f"UMRE-EXCEL::{booking.tur}::{booking.umreci}"
-	for payment in booking.get("payments") or []:
-		if payment.idempotency_key == key:
-			is_posted = payment.posting_status == "Posted" or payment.payment_entry or payment.journal_entry
-			is_verified = getattr(payment, "date_verification_status", None) == "Verified"
-			if is_posted:
-				same_amount = abs(flt(payment.amount) - amount) <= 0.000001
-				same_date = parse_date(payment.posting_date) == payment_date
-				if not same_amount or not same_date:
-					frappe.throw(_("A posted payment cannot be changed by Excel import."))
-				return "unchanged_posted"
-			if is_verified:
-				same_amount = abs(flt(payment.amount) - amount) <= 0.000001
-				same_date = parse_date(payment.posting_date) == payment_date
-				if not same_amount or not same_date:
-					frappe.throw(_("A verified payment cannot be changed by Excel import."))
-				return "unchanged_verified"
-			if not getattr(payment, "legacy_posting_date", None):
-				payment.legacy_posting_date = payment.posting_date
-			payment.amount = amount
-			payment.posting_date = payment_date
-			payment.external_reference = import_name
-			payment.date_source = "Excel"
-			payment.date_verification_status = "Needs Review"
-			payment.date_evidence_reference = import_name
-			payment.verified_by = None
-			payment.verified_on = None
-			payment.date_repair_key = None
-			payment.remarks = f"Excel import {import_name} row {row_number}"
-			return "updated"
-	booking.append(
-		"payments",
-		{
-			"posting_date": payment_date,
-			"amount": amount,
-			"currency": frappe.db.get_value("Umre Tour", booking.tur, "para_birimi"),
-			"external_reference": import_name,
-			"date_source": "Excel",
-			"date_verification_status": "Needs Review",
-			"date_evidence_reference": import_name,
-			"idempotency_key": key,
-			"posting_status": "Draft",
-			"remarks": f"Excel import {import_name} row {row_number}",
-		},
-	)
-	return "created"
-
-
-def _process_row(
-	row: dict[str, Any],
-	tur_name: str,
-	summary: ImportSummary,
-	row_number: int,
-	dry_run: bool,
-	import_name: str,
-) -> dict[str, Any]:
-	tc = normalize_tc(row.get("TC KİMLİK NO"))
-	if not tc:
-		frappe.throw(_("Missing TC KİMLİK NO"))
-	# Validate the explicit business date before any row-level document is changed.
-	if not parse_date(row.get("KAYIT TARİHİ")):
-		frappe.throw(_("KAYIT TARİHİ is required and must contain a valid date."))
-	payment_amount = safe_float(row.get("ÖDENEN"))
-	if payment_amount < 0:
-		frappe.throw(_("ÖDENEN must be greater than 0 when a payment is supplied."))
-	if payment_amount > 0 and not parse_date(row.get("ÖDEME TARİHİ")):
-		frappe.throw(_("ÖDEME TARİHİ is required when ÖDENEN is greater than 0."))
-
-	log = {
-		"row_number": row_number,
-		"tc_kimlik": tc,
-		"ad": preserve_excel_text(row["ADI"]),
-		"soyad": preserve_excel_text(row["SOYADI"]),
-		"status": "Success",
-		"action_umreci": None,
-		"action_booking": None,
-		"payment_action": None,
-		"error_message": None,
-		"created_or_updated_doc": None,
-	}
-	if payment_amount > 0:
-		log["payment_action"] = "would_create_or_update" if dry_run else None
-
-	existing_umreci = _find_existing_umreci(tc)
-	umreci_payload = _umreci_payload(row, tc)
-	if existing_umreci:
-		log["action_umreci"] = "update"
-		umreci_name = existing_umreci
-		if not dry_run:
-			doc = frappe.get_doc(DOCTYPE_UMRECI, existing_umreci)
-			doc.update(umreci_payload)
-			doc.save()
-		summary.updated_umreci += 1
-	else:
-		log["action_umreci"] = "create"
-		umreci_name = f"{umreci_payload['ad']} {umreci_payload['soyad']} - {tc}"
-		if not dry_run:
-			doc = frappe.get_doc({"doctype": DOCTYPE_UMRECI, **umreci_payload})
-			doc.insert()
-			umreci_name = doc.name
-		summary.created_umreci += 1
-
-	existing_booking = _find_existing_booking(umreci_name, tur_name)
-	booking_payload = _booking_payload(row, umreci_name, tur_name, dry_run=dry_run)
-	if existing_booking:
-		log["action_booking"] = "update"
-		log["created_or_updated_doc"] = existing_booking
-		if not dry_run:
-			booking = frappe.get_doc(DOCTYPE_BOOKING, existing_booking)
-			booking.update(booking_payload)
-			log["payment_action"] = _upsert_payment_row(booking, row, import_name, row_number)
-			booking.save()
-		summary.updated_bookings += 1
-	else:
-		log["action_booking"] = "create"
-		if not dry_run:
-			booking = frappe.get_doc({"doctype": DOCTYPE_BOOKING, **booking_payload})
-			log["payment_action"] = _upsert_payment_row(booking, row, import_name, row_number)
-			booking.insert()
-			log["created_or_updated_doc"] = booking.name
-		summary.created_bookings += 1
-
-	return log
+		return "Validated"
+	if any(row["row_status"] in {"Pending Referral", "Pending Conflict"} for row in rows):
+		return "Partially Completed"
+	return "Completed"
 
 
 def run_import(docname: str, *, dry_run: bool) -> dict:
 	import_doc = frappe.get_doc(DOCTYPE_IMPORT, docname)
 	import_doc.check_permission("write")
-	dry_run_snapshot = make_source_snapshot(import_doc) if dry_run else None
+	snapshot = make_source_snapshot(import_doc) if dry_run else None
 	if dry_run and import_doc.status in {"Queued", "Processing", "Completed"}:
-		frappe.throw(_("Bu durumda kuru çalıştırma yapılamaz. Yeni bir içe aktarım kaydı oluşturun."))
+		frappe.throw(_("Bu durumda kuru çalıştırma yapılamaz."))
 	if not frappe.db.exists("Umre Tour", import_doc.target_tour):
-		frappe.throw(_("Target Umre Tour does not exist."))
-
+		frappe.throw(_("Hedef tur bulunamadı."))
 	content = _get_file_content(import_doc)
-	if dry_run and not import_doc.worksheet_name:
-		sheet_names = _worksheet_names_from_content(content)
-		if len(sheet_names) == 1:
-			import_doc.worksheet_name = sheet_names[0]
 	if not dry_run:
 		verify_validation_signature(import_doc, content)
-	_discovered_columns, rows = _read_rows(import_doc, content)
+		_lock_import_materialization()
+	rows = _read_rows(import_doc, content)
 	summary = ImportSummary(total_rows=len(rows))
-	row_log = []
-
-	for idx, row in enumerate(rows, start=2):
+	logs = []
+	for row_number, raw in rows:
 		try:
-			row_log.append(_process_row(row, import_doc.target_tour, summary, idx, dry_run, import_doc.name))
+			logs.append(_process_row(import_doc, row_number, raw, summary, dry_run))
+		except RETRYABLE_IMPORT_ERRORS:
+			raise
 		except Exception as exc:
 			summary.row_errors += 1
-			row_log.append(
-				{
-					"row_number": idx,
-					"tc_kimlik": normalize_tc(row.get("TC KİMLİK NO")),
-					"ad": preserve_excel_text(row.get("ADI")),
-					"soyad": preserve_excel_text(row.get("SOYADI")),
-					"status": "Error",
-					"action_umreci": None,
-					"action_booking": None,
-					"payment_action": None,
-					"error_message": frappe.get_traceback() if not dry_run else str(exc),
-					"created_or_updated_doc": None,
-				}
-			)
-
-	status = "Failed" if summary.row_errors else ("Validated" if dry_run else "Completed")
-	validation_signature = build_validation_signature(import_doc, content) if dry_run else None
-	_update_import_doc(
-		docname,
+			logs.append(_stage_row(import_doc, row_number, raw, None, "Error", str(exc)))
+	status = _final_status(summary, dry_run=dry_run, rows=logs)
+	_save_result(
+		import_doc,
+		snapshot,
 		summary,
-		row_log,
+		logs,
 		status,
-		validation_signature=validation_signature,
-		worksheet_name=import_doc.worksheet_name if dry_run else None,
-		dry_run_snapshot=dry_run_snapshot,
+		build_validation_signature(import_doc, content) if dry_run else None,
 	)
-	return {"summary": asdict(summary), "rows": row_log}
+	return {"summary": asdict(summary), "rows": logs}
 
 
 def run_dry_run(docname: str) -> dict:
@@ -710,27 +803,20 @@ def run_dry_run(docname: str) -> dict:
 
 
 def _mark_failed_attempt(docname: str, attempt_id: str, error_log: str) -> None:
-	frappe.db.sql("select name from `tabUmre Excel Import` where name = %s for update", docname)
+	frappe.db.sql("select name from `tabUmre Excel Import` where name=%s for update", docname)
 	current = frappe.get_doc(DOCTYPE_IMPORT, docname)
 	if not attempt_can_run(current, attempt_id):
 		frappe.db.rollback()
 		return
-	summary = ImportSummary(
-		total_rows=current.total_rows or 0,
-		created_umreci=current.created_umreci or 0,
-		updated_umreci=current.updated_umreci or 0,
-		created_bookings=current.created_bookings or 0,
-		updated_bookings=current.updated_bookings or 0,
-		row_errors=(current.row_errors or 0) + 1,
-	)
-	_update_import_doc(docname, summary, [], "Failed", error_log=error_log)
+	summary = ImportSummary(total_rows=current.total_rows or 0, row_errors=(current.row_errors or 0) + 1)
+	_save_result(current, None, summary, [], "Failed", error_log=error_log)
 
 
 def run_import_job(docname: str, attempt_id: str, user: str | None = None) -> None:
 	if user:
 		frappe.set_user(user)
 	try:
-		frappe.db.sql("select name from `tabUmre Excel Import` where name = %s for update", docname)
+		frappe.db.sql("select name from `tabUmre Excel Import` where name=%s for update", docname)
 		doc = frappe.get_doc(DOCTYPE_IMPORT, docname)
 		if not attempt_can_run(doc, attempt_id):
 			frappe.db.rollback()
@@ -742,19 +828,13 @@ def run_import_job(docname: str, attempt_id: str, user: str | None = None) -> No
 			doc.completed_at = None
 			doc.error_log = None
 			doc.save(ignore_permissions=True)
-		# RQ guarantees that one job_id is not executed concurrently. A Processing
-		# retry with this same attempt_id therefore represents recovery after a hard kill.
 		frappe.db.commit()
 		run_import(docname, dry_run=False)
 	except RETRYABLE_IMPORT_ERRORS:
-		# Frappe retries transient database/job errors. Keep this attempt Processing
-		# so the same attempt_id can safely resume after the financial rollback.
 		frappe.db.rollback()
 		raise
 	except Exception:
 		error_log = frappe.get_traceback()
-		# Roll back every financial write made by this attempt before recording
-		# the terminal failure in a fresh transaction.
 		frappe.db.rollback()
 		_mark_failed_attempt(docname, attempt_id, error_log)
 		frappe.db.commit()
@@ -775,7 +855,7 @@ def _enqueue_attempt(docname: str, attempt_id: str, user: str, *, after_commit: 
 
 
 def enqueue_import(docname: str, user: str | None = None) -> dict:
-	frappe.db.sql("select name from `tabUmre Excel Import` where name = %s for update", docname)
+	frappe.db.sql("select name from `tabUmre Excel Import` where name=%s for update", docname)
 	doc = frappe.get_doc(DOCTYPE_IMPORT, docname)
 	doc.check_permission("write")
 	queue_user = user or frappe.session.user
@@ -784,7 +864,7 @@ def enqueue_import(docname: str, user: str | None = None) -> dict:
 			_enqueue_attempt(docname, doc.job_id, queue_user, after_commit=False)
 		return {"job_id": doc.job_id, "status": doc.status}
 	if doc.status != "Validated" or doc.row_errors:
-		frappe.throw(_("Aktarımı başlatmadan önce hatasız bir kuru çalıştırma yapın."))
+		frappe.throw(_("Aktarımı başlatmadan önce kuru çalıştırmayı tamamlayın."))
 	verify_validation_signature(doc)
 	attempt_id = uuid4().hex
 	doc.status = "Queued"
@@ -794,3 +874,43 @@ def enqueue_import(docname: str, user: str | None = None) -> dict:
 	doc.save(ignore_permissions=True)
 	_enqueue_attempt(docname, attempt_id, queue_user, after_commit=True)
 	return {"job_id": attempt_id, "status": "Queued"}
+
+
+def resolve_referral(docname: str, referral_text: str, referral_source: str) -> None:
+	doc = frappe.get_doc(DOCTYPE_IMPORT, docname)
+	doc.check_permission("write")
+	if doc.status in {"Queued", "Processing", "Completed"}:
+		frappe.throw(_("Kilitli aktarım değiştirilemez."))
+	if not frappe.db.exists(DOCTYPE_REFERRAL, referral_source):
+		frappe.throw(_("Referans kaynağı bulunamadı."))
+	for row in doc.get("staged_rows") or []:
+		if header_key(row.referral_text) == header_key(referral_text):
+			row.referral_source = referral_source
+	doc.status = "Draft"
+	doc.validation_signature = None
+	doc.save()
+
+
+def create_referral(docname: str, referral_text: str) -> str:
+	doc = frappe.get_doc(DOCTYPE_IMPORT, docname)
+	doc.check_permission("write")
+	if doc.status in {"Queued", "Processing", "Completed"}:
+		frappe.throw(_("Kilitli aktarım değiştirilemez."))
+	if not frappe.has_permission(DOCTYPE_REFERRAL, "create", throw=False):
+		frappe.throw(_("Referans kaynağı oluşturma yetkiniz yok."), frappe.PermissionError)
+	name = preserve_excel_text(referral_text)
+	if not name:
+		frappe.throw(_("Referans adı boş olamaz."))
+	existing = next(
+		(
+			value
+			for value in frappe.get_all(DOCTYPE_REFERRAL, pluck="name", limit_page_length=0)
+			if header_key(value) == header_key(name)
+		),
+		None,
+	)
+	if not existing:
+		frappe.get_doc({"doctype": DOCTYPE_REFERRAL, "kaynak_adi": name}).insert()
+		existing = name
+	resolve_referral(docname, referral_text, existing)
+	return existing
