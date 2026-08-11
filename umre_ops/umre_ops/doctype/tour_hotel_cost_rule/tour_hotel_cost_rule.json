@@ -41,6 +41,7 @@
    "in_standard_filter": 1,
    "label": "Sezon",
    "options": "Umre Season",
+   "read_only": 1,
    "reqd": 1
   },
   {
@@ -89,7 +90,8 @@
   {
    "fieldname": "kur",
    "fieldtype": "Float",
-   "label": "Kur",
+   "description": "1 USD karşılığı SAR tutarıdır; USD maliyet = SAR toplamı ÷ kur.",
+   "label": "SAR / USD Kuru",
    "non_negative": 1,
    "reqd": 1
   },
@@ -97,7 +99,8 @@
    "fieldname": "toplam_oda_maliyeti_usd",
    "fieldtype": "Currency",
    "label": "Toplam Oda Maliyeti USD",
-   "options": "usd_currency"
+   "options": "usd_currency",
+   "read_only": 1
   },
   {
    "fieldname": "not",
@@ -108,25 +111,29 @@
    "fieldname": "bir_kisilik_oda_maaliyeti",
    "fieldtype": "Currency",
    "label": "Bir kişilik oda maaliyeti",
-   "options": "usd_currency"
+   "options": "usd_currency",
+   "read_only": 1
   },
   {
    "fieldname": "iki_kisilik_oda_maliyeti",
    "fieldtype": "Currency",
    "label": "iki kişilik oda maliyeti",
-   "options": "usd_currency"
+   "options": "usd_currency",
+   "read_only": 1
   },
   {
    "fieldname": "uc_kisilik_oda_maliyeti",
    "fieldtype": "Currency",
    "label": "Üç kişilik oda maliyeti",
-   "options": "usd_currency"
+   "options": "usd_currency",
+   "read_only": 1
   },
   {
    "fieldname": "dort_kisilik_oda_maliyeti",
    "fieldtype": "Currency",
    "label": "Dört Kişilik oda maliyeti",
-   "options": "usd_currency"
+   "options": "usd_currency",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,

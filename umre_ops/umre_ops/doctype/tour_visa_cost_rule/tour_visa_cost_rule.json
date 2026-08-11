@@ -28,6 +28,7 @@
    "in_standard_filter": 1,
    "label": "Sezon",
    "options": "Umre Season",
+   "read_only": 1,
    "reqd": 1
   },
   {
@@ -52,6 +53,7 @@
    "label": "Para birimi",
    "non_negative": 1,
    "options": "Currency",
+   "read_only": 1,
    "reqd": 1
   }
  ],

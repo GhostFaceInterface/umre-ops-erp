@@ -27,11 +27,11 @@
    "in_standard_filter": 1,
    "label": "Sezon",
    "options": "Umre Season",
+   "read_only": 1,
    "reqd": 1
   },
   {
    "default": "USD",
-   "fetch_from": "tour.para_birimi",
    "fieldname": "currency",
    "fieldtype": "Link",
    "hidden": 1,

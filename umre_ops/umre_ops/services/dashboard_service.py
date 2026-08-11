@@ -15,7 +15,10 @@ Returns the strict data contract for the Umre Operasyon Paneli dashboard:
             "total_cost": float,
             "net_profit": float,
         },
-        "cost_breakdown": [{"label": str, "value": float}],
+        "configured_cost_items": [
+            {"key": str, "label": str, "value": float, "currency": "USD",
+             "source_doctype": str, "source_name": str}
+        ],
         "performance": {
             "cost_per_person": float,
             "profit_per_person": float,
@@ -26,12 +29,8 @@ Returns the strict data contract for the Umre Operasyon Paneli dashboard:
         },
     }
 
-Performance contract
---------------------
-* TWO SQL queries total (booking-level metrics + component aggregation
-  joined to ``Cost Type`` for sort order and display names).
-* No per-booking Python loops; no response caching.
-* Safe for use as a desk-page payload (returns inside one HTTP round-trip).
+The chart reads saved cost-rule rows directly. Persisted booking components are
+kept separate and are used only for the historical KPI totals.
 """
 from __future__ import annotations
 
@@ -83,6 +82,25 @@ def _list_tour_options(season: str) -> list[dict[str, str]]:
 	]
 
 
+def _assert_usd_tours(season: str, tour: str | None) -> None:
+	filters: dict[str, Any] = {"season": season}
+	if tour:
+		filters["name"] = tour
+	non_usd = [
+		row["name"]
+		for row in frappe.get_all(
+			"Umre Tour", filters=filters, fields=["name", "para_birimi"], limit_page_length=0
+		)
+		if (row.get("para_birimi") or CURRENCY) != CURRENCY
+	]
+	if non_usd:
+		frappe.throw(
+			_("Dashboard yalnız USD turları birleştirir. Para birimini düzeltin: {0}").format(
+				", ".join(non_usd)
+			)
+		)
+
+
 def _booking_metrics(season: str, tour: str | None) -> dict[str, float]:
 	"""Single SQL: per-tour or all-tours booking-side aggregates."""
 	where = "WHERE t.season = %(season)s"
@@ -116,57 +134,126 @@ def _booking_metrics(season: str, tour: str | None) -> dict[str, float]:
 	}
 
 
-def _component_rollup(
-	season: str,
-	tour: str | None,
-) -> tuple[dict[str, float], list[dict[str, Any]]]:
-	"""One SQL: amounts per ``cost_type`` with ``Cost Type`` sort + label."""
+def _actual_component_totals(season: str, tour: str | None) -> dict[str, float]:
+	"""Return historical booking-component totals without feeding the rule chart."""
 	where = "WHERE t.season = %(season)s"
 	params: dict[str, Any] = {"season": season}
 	if tour:
 		where += " AND b.tur = %(tour)s"
 		params["tour"] = tour
-
 	rows = frappe.db.sql(
 		f"""
-		SELECT
-			c.cost_type AS code,
-			SUM(c.amount) AS total,
-			MIN(IFNULL(ct.sort_order, 9999)) AS sort_order,
-			MIN(IFNULL(ct.cost_type_name, c.cost_type)) AS type_label
+		SELECT c.cost_type, SUM(c.amount) AS total
 		FROM `tabCost Component` c
 		JOIN `tabUmre Booking` b ON b.name = c.booking
 		JOIN `tabUmre Tour` t ON t.name = b.tur
-		LEFT JOIN `tabCost Type` ct ON ct.name = c.cost_type
 		{where}
 		GROUP BY c.cost_type
-		ORDER BY sort_order, c.cost_type
 		""",
 		params,
 		as_dict=True,
 	)
-	totals: dict[str, float] = {}
-	ordered: list[dict[str, Any]] = []
-	for r in rows:
-		code = r["code"]
-		amt = flt(r.get("total") or 0)
-		totals[code] = amt
-		ordered.append(
-			{
-				"code": code,
-				"label": r.get("type_label") or code,
-				"sort_order": cintish(r.get("sort_order")),
-				"amount": amt,
-			}
+	return {row["cost_type"]: flt(row.get("total") or 0) for row in rows}
+
+
+def _configured_cost_items(season: str, tour: str | None) -> list[dict[str, Any]]:
+	"""Return one dashboard row per persisted cost-rule record.
+
+	This is intentionally independent from booking ``Cost Component`` rows. Submitted
+	booking costs remain historical snapshots; unposted snapshots may be refreshed
+	without changing what the chart displays.
+	"""
+	tours = [tour] if tour else frappe.get_all(
+		"Umre Tour", filters={"season": season}, pluck="name", limit_page_length=0
+	)
+	if not tours:
+		return []
+	items: list[dict[str, Any]] = []
+
+	def append(doctype: str, row: dict, label: str, value: float) -> None:
+		items.append({
+			"key": f"{doctype}:{row['name']}",
+			"label": label,
+			"value": flt(value, 2),
+			"currency": CURRENCY,
+			"source_doctype": doctype,
+			"source_name": row["name"],
+		})
+
+	for row in frappe.get_all(
+		"Tour Hotel Cost Rule",
+		filters={"tur": ["in", tours]},
+		fields=["name", "tur", "lokasyon", "gece_sayisi", "birim_fiyat_sar", "kur"],
+		order_by="tur, lokasyon, creation",
+		limit_page_length=0,
+	):
+		nights, unit_sar, sar_per_usd = (
+			flt(row.get("gece_sayisi")), flt(row.get("birim_fiyat_sar")), flt(row.get("kur"))
 		)
-	return totals, ordered
+		if nights * unit_sar > 0 and sar_per_usd <= 0:
+			frappe.throw(_("Otel kuralında SAR/USD kuru eksik: {0}").format(row["name"]))
+		value = nights * unit_sar / sar_per_usd if sar_per_usd > 0 else 0
+		append("Tour Hotel Cost Rule", row, f"{row['tur']} · Otel · {row.get('lokasyon')}", value)
 
+	for row in frappe.get_all(
+		"Tour Airfare Cost Rule",
+		filters={"tur": ["in", tours]},
+		fields=["name", "tur", "yolcu_tipi", "tutar"],
+		order_by="tur, yolcu_tipi, creation",
+		limit_page_length=0,
+	):
+		append(
+			"Tour Airfare Cost Rule",
+			row,
+			f"{row['tur']} · Uçak · {row.get('yolcu_tipi')}",
+			row.get("tutar"),
+		)
 
-def cintish(v: Any) -> int:
-	try:
-		return int(v)
-	except (TypeError, ValueError):
-		return 9999
+	for row in frappe.get_all(
+		"Tour Visa Cost Rule",
+		filters={"tur": ["in", tours]},
+		fields=["name", "tur", "vize_tipi", "tutar"],
+		order_by="tur, vize_tipi, creation",
+		limit_page_length=0,
+	):
+		append("Tour Visa Cost Rule", row, f"{row['tur']} · Vize · {row.get('vize_tipi')}", row.get("tutar"))
+
+	for row in frappe.get_all(
+		"Tour Diyanet Card Rule",
+		filters={"tur": ["in", tours]}, fields=["name", "tur", "tutar"],
+		order_by="tur, creation", limit_page_length=0,
+	):
+		append("Tour Diyanet Card Rule", row, f"{row['tur']} · Diyanet", row.get("tutar"))
+
+	hotel_nights: dict[str, dict[str, float]] = {name: {"Mekke": 0, "Medine": 0} for name in tours}
+	for row in frappe.get_all(
+		"Tour Hotel Cost Rule", filters={"tur": ["in", tours]},
+		fields=["tur", "lokasyon", "gece_sayisi"], limit_page_length=0,
+	):
+		if row.get("lokasyon") in {"Mekke", "Medine"}:
+			hotel_nights[row["tur"]][row["lokasyon"]] += flt(row.get("gece_sayisi"))
+	for row in frappe.get_all(
+		"Meal Cost Rule", filters={"tour": ["in", tours]},
+		fields=["name", "tour", "mekke_price_sar", "medine_price_sar", "sar_to_usd_rate"],
+		order_by="tour, creation", limit_page_length=0,
+	):
+		nights = hotel_nights[row["tour"]]
+		sar_total = (
+			nights["Mekke"] * flt(row.get("mekke_price_sar"))
+			+ nights["Medine"] * flt(row.get("medine_price_sar"))
+		)
+		rate = flt(row.get("sar_to_usd_rate"))
+		if sar_total > 0 and rate <= 0:
+			frappe.throw(_("Yemek kuralında SAR/USD kuru eksik: {0}").format(row["name"]))
+		value = sar_total / rate if rate > 0 else 0
+		append("Meal Cost Rule", row, f"{row['tour']} · Yemek", value)
+
+	for row in frappe.get_all(
+		"Other Cost Rule", filters={"tour": ["in", tours]},
+		fields=["name", "tour", "per_person_cost"], order_by="tour, creation", limit_page_length=0,
+	):
+		append("Other Cost Rule", row, f"{row['tour']} · Diğer", row.get("per_person_cost"))
+	return items
 
 
 @frappe.whitelist()
@@ -192,22 +279,25 @@ def get_tour_cost_breakdown(
 			frappe.throw(_("Tur bulunamadı: {0}").format(tour))  # noqa: RUF001
 		if tour_row.get("season") != season:
 			frappe.throw(_("Seçilen tur {0} sezonuna ait değil.").format(season))
+	_assert_usd_tours(season, tour)
 
 	booking = _booking_metrics(season, tour)
-	components, ordered_rows = _component_rollup(season, tour)
-	total_cost = flt(sum(components.values()), 2)
+	configured_cost_items = _configured_cost_items(season, tour)
+	actual_components = _actual_component_totals(season, tour)
+	total_cost = flt(sum(actual_components.values()), 2)
 	total_revenue = flt(booking["gelir"], 2)
 	net_profit = flt(total_revenue - total_cost, 2)
 	kisi = booking["kisi_sayisi"] or 0
 	cost_per_person = flt(total_cost / kisi, 2) if kisi else 0.0
 	profit_per_person = flt(net_profit / kisi, 2) if kisi else 0.0
-	food_ratio = flt((components.get("MEAL", 0) / total_cost) * 100, 2) if total_cost > 0 else 0.0
+	meal_total = actual_components.get("MEAL", 0)
+	food_ratio = flt((meal_total / total_cost) * 100, 2) if total_cost > 0 else 0.0
 	cost_breakdown = [
 		{
-			"label": str(row.get("label") or row.get("code")),
-			"value": flt(row.get("amount") or 0, 2),
+			"label": row["label"],
+			"value": row["value"],
 		}
-		for row in ordered_rows
+		for row in configured_cost_items
 	]
 
 	return {
@@ -222,6 +312,7 @@ def get_tour_cost_breakdown(
 			"net_profit": net_profit,
 		},
 		"cost_breakdown": cost_breakdown,
+		"configured_cost_items": configured_cost_items,
 		"performance": {
 			"cost_per_person": cost_per_person,
 			"profit_per_person": profit_per_person,

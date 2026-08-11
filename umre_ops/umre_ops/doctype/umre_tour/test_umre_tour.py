@@ -9,7 +9,10 @@ from unittest import TestCase
 from unittest.mock import Mock, patch
 
 from umre_ops.patches import backfill_umre_tour_season
-from umre_ops.umre_ops.doctype.umre_tour.umre_tour import UmreTour
+from umre_ops.umre_ops.doctype.umre_tour.umre_tour import (
+	UmreTour,
+	_mask_identity,
+)
 
 
 class _TourStub(dict):
@@ -66,6 +69,18 @@ class TestUmreTourSeason(TestCase):
 
 		throw.assert_not_called()
 		doc.has_value_changed.assert_not_called()
+
+
+class TestUmreTourDetail(TestCase):
+	def test_metadata_has_tour_detail_html(self) -> None:
+		meta = json.loads(Path(__file__).with_name("umre_tour.json").read_text())
+		field = next(item for item in meta["fields"] if item.get("fieldname") == "tur_detayi_html")
+		self.assertEqual(field["fieldtype"], "HTML")
+		self.assertIn("tur_detayi_html", meta["field_order"])
+
+	def test_identity_is_masked(self) -> None:
+		self.assertEqual(_mask_identity("12345678901"), "12*******01")
+		self.assertEqual(_mask_identity("1234"), "****")
 
 
 class TestBackfillUmreTourSeason(TestCase):

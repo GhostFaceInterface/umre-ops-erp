@@ -55,6 +55,18 @@ def _require_target_write_permissions(doctype: str, *, dry_run: bool) -> None:
 	require_doctype_permission(doctype, "submit")
 
 
+def _lock_booking_for_posting(booking_name: str, *, dry_run: bool) -> None:
+	"""Serialize real accounting posts with tour-participant deletion."""
+	if dry_run:
+		return
+	locked = frappe.db.sql(
+		"SELECT name FROM `tabUmre Booking` WHERE name = %s FOR UPDATE",
+		(booking_name,),
+	)
+	if not locked:
+		frappe.throw(_("Umre Booking {0} no longer exists.").format(booking_name))
+
+
 def _require_posting_date(posting_date: str | None) -> str:
 	if not posting_date:
 		frappe.throw(_("Posting date is required."))
@@ -103,6 +115,8 @@ def post_booking_receipt_journal_entry(
 	Post a customer receipt as Journal Entry (cash/bank Dr, income Cr).
 	This path does not require Customer/AR setup and is useful for minimal integration.
 	"""
+	_require_accounting_posting_enabled(dry_run=dry_run)
+	_lock_booking_for_posting(booking_name, dry_run=dry_run)
 	booking = frappe.get_doc("Umre Booking", booking_name)
 	require_document_permission(booking, "read" if dry_run else "write")
 	mapping = get_account_mapping(getattr(booking, "company", None))
@@ -139,7 +153,6 @@ def post_booking_receipt_journal_entry(
 		return existing
 	if dry_run:
 		return PostResult("Journal Entry", "DRY-RUN", idempotency_key)
-	_require_accounting_posting_enabled(dry_run=False)
 	_require_target_write_permissions("Journal Entry", dry_run=False)
 
 	event_name, _request_hash = ensure_event_started(
@@ -213,6 +226,8 @@ def post_booking_receipt_payment_entry(
 	Post a customer receipt using ERPNext `Payment Entry` (preferred when Customer exists).
 	Idempotent using `Umre Posting Event` + unique `Payment Entry.umre_posting_key`.
 	"""
+	_require_accounting_posting_enabled(dry_run=dry_run)
+	_lock_booking_for_posting(booking_name, dry_run=dry_run)
 	booking = frappe.get_doc("Umre Booking", booking_name)
 	require_document_permission(booking, "read" if dry_run else "write")
 	company = _require_company(booking)
@@ -244,7 +259,6 @@ def post_booking_receipt_payment_entry(
 		return existing
 	if dry_run:
 		return PostResult("Payment Entry", "DRY-RUN", idempotency_key)
-	_require_accounting_posting_enabled(dry_run=False)
 	_require_target_write_permissions("Payment Entry", dry_run=False)
 
 	event_name, _request_hash = ensure_event_started(
@@ -308,6 +322,8 @@ def post_booking_costs_journal_entry(
 	Post operational costs as Journal Entry (Expense Dr, cash/bank Cr).
 	This is a minimal “direct paid expense” path; supplier/AP workflows can be added later.
 	"""
+	_require_accounting_posting_enabled(dry_run=dry_run)
+	_lock_booking_for_posting(booking_name, dry_run=dry_run)
 	booking = frappe.get_doc("Umre Booking", booking_name)
 	require_document_permission(booking, "read" if dry_run else "write")
 	mapping = get_account_mapping(getattr(booking, "company", None))
@@ -390,7 +406,6 @@ def post_booking_costs_journal_entry(
 		return existing
 	if dry_run:
 		return PostResult("Journal Entry", "DRY-RUN", idempotency_key)
-	_require_accounting_posting_enabled(dry_run=False)
 	_require_target_write_permissions("Journal Entry", dry_run=False)
 
 	event_name, _request_hash = ensure_event_started(

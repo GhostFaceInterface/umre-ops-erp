@@ -11,7 +11,9 @@
   "tc_kimlik",
   "dogum_tarihi",
   "telefon_numarasi",
-  "uyruk"
+  "uyruk",
+  "tur_gecmisi_section",
+  "tur_gecmisi_html"
  ],
  "fields": [
   {
@@ -61,6 +63,16 @@
    "fieldtype": "Data",
    "label": "Uyruk",
    "reqd": 1
+  },
+  {
+   "fieldname": "tur_gecmisi_section",
+   "fieldtype": "Section Break",
+   "label": "Tur Geçmişi"
+  },
+  {
+   "fieldname": "tur_gecmisi_html",
+   "fieldtype": "HTML",
+   "label": "Katıldığı Turlar"
   }
  ],
  "grid_page_length": 50,

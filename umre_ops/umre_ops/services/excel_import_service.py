@@ -335,7 +335,11 @@ def attempt_can_run(current_doc, attempt_id: str) -> bool:
 
 
 def _get_file_content(import_doc) -> bytes:
-	file_name = frappe.db.get_value("File", {"file_url": import_doc.import_file}, "name")
+	return _get_file_content_by_url(import_doc.import_file)
+
+
+def _get_file_content_by_url(file_url: str) -> bytes:
+	file_name = frappe.db.get_value("File", {"file_url": file_url}, "name")
 	if not file_name:
 		frappe.throw(_("Yüklenen Excel dosyası bulunamadı."))
 	file_doc = frappe.get_doc("File", file_name)
@@ -367,6 +371,21 @@ def inspect_headers(import_doc, content: bytes | None = None) -> list[str]:
 	if header_row < 1 or header_row > len(rows):
 		frappe.throw(_("Başlık satırı Excel dosyasının dışında."))
 	return [preserve_excel_text(value) for value in rows[header_row - 1] if not is_blank(value)]
+
+
+def inspect_headers_from_file(file_url: str, header_row: int = 1) -> list[str]:
+	"""Inspect an uploaded workbook before its parent import document is saved."""
+	probe = frappe._dict(import_file=file_url, header_row=cint(header_row or 1))
+	return inspect_headers(probe, _get_file_content_by_url(file_url))
+
+
+def suggest_column_mappings(headers: list[str]) -> list[dict[str, str]]:
+	"""Suggest normalized exact matches; unmatched targets remain manual choices."""
+	header_by_key = {header_key(header): header for header in headers if header}
+	return [
+		{"target_field": target, "source_column": header_by_key.get(header_key(target), "")}
+		for target in IMPORT_FIELDS
+	]
 
 
 def _validated_mapping(import_doc, headers: list[str]) -> dict[str, str]:

@@ -1,5 +1,10 @@
 // Copyright (c) 2026, Sermed Turizm and contributors
 // For license information, please see license.txt
 
-// `toplam_oda_maliyeti_usd` and per-occupancy columns: computed in
-// `tour_hotel_cost_rule.py` (validate) + `tour_cost_rule_service.py`. No business logic in JS.
+frappe.ui.form.on("Tour Hotel Cost Rule", {
+	setup(frm) {
+		frappe.call("umre_ops.umre_ops.services.expense_service.get_active_season").then((response) => {
+			if (response.message) frm.set_query("tur", () => ({ filters: { season: response.message } }));
+		});
+	},
+});

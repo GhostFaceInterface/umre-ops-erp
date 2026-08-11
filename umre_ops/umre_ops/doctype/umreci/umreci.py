@@ -8,6 +8,8 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.model.naming import make_autoname
 
+from umre_ops.umre_ops.services.permission_service import require_doctype_permission
+
 
 class Umreci(Document):
 	"""
@@ -43,3 +45,27 @@ class Umreci(Document):
 		)
 		if duplicate:
 			frappe.throw(_("Bu TC / Yabancı Kimlik ile başka bir Umreci kaydı zaten var."))
+
+
+@frappe.whitelist()
+def get_tour_history(umreci: str) -> list[dict]:
+	"""Return current participation history; deleted tour memberships intentionally disappear."""
+	umreci = (umreci or "").strip()
+	if not umreci:
+		frappe.throw(_("Umreci zorunludur."))
+	frappe.get_doc("Umreci", umreci).check_permission("read")
+	require_doctype_permission("Umre Booking", "read")
+	return frappe.db.sql(
+		"""
+		SELECT
+			b.name AS booking, b.tur, t.tur_adi, t.baslangic_tarihi, t.bitis_tarihi,
+			b.statu, b.oda_tipi, b.ucret, b.odenen, t.para_birimi,
+			(b.ucret - b.odenen) AS bakiye
+		FROM `tabUmre Booking` b
+		JOIN `tabUmre Tour` t ON t.name = b.tur
+		WHERE b.umreci = %s
+		ORDER BY t.baslangic_tarihi DESC, b.creation DESC
+		""",
+		(umreci,),
+		as_dict=True,
+	)

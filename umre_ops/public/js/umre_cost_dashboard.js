@@ -391,7 +391,7 @@
 		return Boolean(
 			data &&
 			data.kpis &&
-			Array.isArray(data.cost_breakdown) &&
+			Array.isArray(data.configured_cost_items) &&
 			data.performance &&
 			data.meta &&
 			Array.isArray(data.seasons) &&
@@ -409,7 +409,7 @@
 
 	function render_payload(panel, p) {
 		const k = p.kpis || {};
-		const rows = (p.cost_breakdown || []).map((row, idx) => ({
+		const rows = (p.configured_cost_items || []).map((row, idx) => ({
 			label: row.label || __("Maliyet"),
 			value: Number(row.value || 0),
 			color: COST_COLORS[idx % COST_COLORS.length]
@@ -443,9 +443,9 @@
 			hero_cell("profit " + profit_loss, __("Net Kar"), fmt_money(k.net_profit, currency), "")
 		].join("");
 
-		// Cost cards from the strict API contract: cost_breakdown[{label, value}].
+		// Cost cards come directly from persisted rule records.
 		const cards = panel.querySelector("#umre-fin-cards");
-		const total = Number(k.total_cost || 0);
+		const total = rows.reduce((sum, row) => sum + Number(row.value || 0), 0);
 		cards.innerHTML = rows.map((c) => {
 			const amt = Number(c.value || 0);
 			const share = total > 0 ? (amt / total) : 0;
@@ -491,7 +491,7 @@
 	function render_chart(panel, p) {
 		const host = panel.querySelector("#umre-fin-chart");
 		host.innerHTML = ""; // reset
-		const rows = p.cost_breakdown || [];
+		const rows = p.configured_cost_items || [];
 		const labels = rows.map((x) => x.label);
 		const values = rows.map((x) => Number(x.value || 0));
 		if (!labels.length) {
@@ -683,16 +683,15 @@
 			});
 		}
 
-		// Also refresh whenever an Umre Booking or Cost Component is saved
-		// from anywhere in the desk (covers the "after booking insert" rule
-		// even without a realtime event from the server).
+		// Refresh when a rule or tour selection source is saved in Desk.
 		$(document).on("after_save", function (_evt, doc) {
 			if (!doc) return;
 			if (
-				doc.doctype === "Umre Booking" ||
-				doc.doctype === "Cost Component" ||
 				doc.doctype === "Umre Tour" ||
-				doc.doctype === "Tour Cost Configuration" ||
+				doc.doctype === "Tour Hotel Cost Rule" ||
+				doc.doctype === "Tour Airfare Cost Rule" ||
+				doc.doctype === "Tour Visa Cost Rule" ||
+				doc.doctype === "Tour Diyanet Card Rule" ||
 				doc.doctype === "Meal Cost Rule" ||
 				doc.doctype === "Other Cost Rule"
 			) {

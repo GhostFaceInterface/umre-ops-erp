@@ -20,7 +20,9 @@
   "iki_kisilik_oda",
   "uc_kisilik_oda",
   "dort_kisilik_oda",
-  "para_birimi"
+  "para_birimi",
+  "tur_detayi_section",
+  "tur_detayi_html"
  ],
  "fields": [
   {
@@ -117,11 +119,23 @@
    "options": "para_birimi"
   },
   {
+	"default": "USD",
    "fieldname": "para_birimi",
    "fieldtype": "Link",
    "label": "Para Birimi",
    "options": "Currency",
+	"read_only": 1,
    "reqd": 1
+  },
+  {
+   "fieldname": "tur_detayi_section",
+   "fieldtype": "Section Break",
+   "label": "Tur Detayı"
+  },
+  {
+   "fieldname": "tur_detayi_html",
+   "fieldtype": "HTML",
+   "label": "Tur Katılımcıları"
   }
  ],
  "grid_page_length": 50,

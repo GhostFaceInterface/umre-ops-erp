@@ -1,12 +1,11 @@
 # Copyright (c) 2026, Sermed Turizm and contributors
-# For license information, please see license.txt
 
 from frappe.model.document import Document
 
 from umre_ops.umre_ops.services.season_service import apply_tour_season
 
 
-class TourVisaCostRule(Document):
+class TourAirfareCostRule(Document):
 	def validate(self) -> None:
 		apply_tour_season(self, tour_fieldname="tur")
 		self.para_birimi = "USD"

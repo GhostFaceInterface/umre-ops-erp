@@ -25,6 +25,7 @@ from umre_ops.umre_ops.services.excel_import_service import (
 	normalize_tc,
 	safe_float,
 	sanitize_phone,
+	suggest_column_mappings,
 	split_cities,
 	validate_dry_run_snapshot,
 	verify_validation_signature,
@@ -180,6 +181,13 @@ class IntegrationTestUmreExcelImport(IntegrationTestCase):
 		]
 		with self.assertRaises(frappe.ValidationError):
 			_validated_mapping(doc, list(IMPORT_FIELDS))
+
+	def test_mapping_suggestions_normalize_headers_and_leave_manual_fallback(self) -> None:
+		suggestions = suggest_column_mappings([" tc kimlik ", "Ad", "ÖZEL BAŞLIK"])
+		by_target = {row["target_field"]: row["source_column"] for row in suggestions}
+		self.assertEqual(by_target["TC KİMLİK"], " tc kimlik ")
+		self.assertEqual(by_target["AD"], "Ad")
+		self.assertEqual(by_target["SOYAD"], "")
 
 	def test_validation_signature_binds_content_tour_header_and_mapping(self) -> None:
 		doc = make_import()

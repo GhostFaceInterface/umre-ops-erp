@@ -12,11 +12,13 @@
  ],
  "fields": [
   {
+	"description": "Kullanımdan kaldırıldı; geçmiş kayıt yalnız denetim amacıyla tutulur.",
    "fieldname": "tour",
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Tur",
    "options": "Umre Tour",
+	"read_only": 1,
    "reqd": 1,
    "unique": 1
   },
@@ -27,6 +29,7 @@
    "in_standard_filter": 1,
    "label": "Sezon",
    "options": "Umre Season",
+   "read_only": 1,
    "reqd": 1
   },
   {
@@ -35,6 +38,7 @@
    "fieldtype": "Int",
    "in_list_view": 1,
    "label": "Mekke G\u00fcn Say\u0131s\u0131"
+	,"read_only": 1
   },
   {
    "default": "0",
@@ -42,6 +46,7 @@
    "fieldtype": "Int",
    "in_list_view": 1,
    "label": "Medine G\u00fcn Say\u0131s\u0131"
+	,"read_only": 1
   }
  ],
  "index_web_pages_for_search": 1,
@@ -52,11 +57,9 @@
  "owner": "Administrator",
  "permissions": [
   {
-   "create": 1,
-   "delete": 1,
-   "read": 1,
-   "role": "System Manager",
-   "write": 1
+	"read": 1,
+	"report": 1,
+	"role": "System Manager"
   },
   {
    "read": 1,

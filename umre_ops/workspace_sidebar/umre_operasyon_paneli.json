@@ -120,9 +120,9 @@
   },
   {
    "type": "Link",
-   "label": "Tour Passenger Cost Rule",
+   "label": "Tour Airfare Cost Rule",
    "link_type": "DocType",
-   "link_to": "Tour Passenger Cost Rule",
+   "link_to": "Tour Airfare Cost Rule",
    "icon": "users",
    "idx": 10,
    "child": 0,

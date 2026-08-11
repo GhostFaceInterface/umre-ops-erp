@@ -37,7 +37,6 @@ from typing import Any
 import frappe
 from frappe.utils import flt, getdate
 
-UCAK_COMPONENT = "U\u00e7ak"
 PAYING_STATUS = "UMRECI"
 
 
@@ -123,13 +122,13 @@ def lookup_flight_cost(tur: str | None, yolcu_tipi: str | None) -> float:
 	if not (tur and yolcu_tipi):
 		return 0.0
 	name = frappe.db.get_value(
-		"Tour Passenger Cost Rule",
-		{"tur": tur, "yolcu_tipi": yolcu_tipi, "expense_component": UCAK_COMPONENT},
+		"Tour Airfare Cost Rule",
+		{"tur": tur, "yolcu_tipi": yolcu_tipi},
 		"name",
 	)
 	if not name:
 		return 0.0
-	return flt(frappe.db.get_value("Tour Passenger Cost Rule", name, "tutar") or 0)
+	return flt(frappe.db.get_value("Tour Airfare Cost Rule", name, "tutar") or 0)
 
 
 def lookup_visa_cost(tur: str | None, vize_tipi: str | None) -> float:

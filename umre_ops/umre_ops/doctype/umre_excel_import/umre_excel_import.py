@@ -17,6 +17,8 @@ from umre_ops.umre_ops.services.excel_import_service import (
 )
 from umre_ops.umre_ops.services.excel_import_service import (
 	inspect_headers as inspect_import_headers,
+	inspect_headers_from_file,
+	suggest_column_mappings,
 )
 from umre_ops.umre_ops.services.excel_import_service import (
 	resolve_referral as resolve_import_referral,
@@ -56,29 +58,44 @@ class UmreExcelImport(Document):
 			frappe.throw(
 				_("Kuyruktaki, işlenen veya tamamlanmış bir aktarımın kaynağı ya da eşlemesi değiştirilemez.")
 			)
-		if persisted.status in {"Validated", "Failed"}:
-			self.status = "Draft"
-			self.validation_signature = None
-			self.total_rows = 0
-			self.created_umreci = 0
-			self.updated_umreci = 0
-			self.created_bookings = 0
-			self.updated_bookings = 0
-			self.row_errors = 0
-			self.dry_run_result = None
-			self.row_log = None
-			self.error_log = None
-			self.started_at = None
-			self.completed_at = None
-			self.set("staged_rows", [])
+		self.status = "Draft"
+		self.validation_signature = None
+		self.total_rows = 0
+		self.created_umreci = 0
+		self.updated_umreci = 0
+		self.created_bookings = 0
+		self.updated_bookings = 0
+		self.row_errors = 0
+		self.dry_run_result = None
+		self.row_log = None
+		self.error_log = None
+		self.started_at = None
+		self.completed_at = None
+		self.set("staged_rows", [])
 
 
 @frappe.whitelist()
-def inspect_headers(docname: str) -> list[str]:
-	"""Return the selected header row from a workbook that contains exactly one sheet."""
-	doc = frappe.get_doc("Umre Excel Import", docname)
-	doc.check_permission("read")
-	return inspect_import_headers(doc)
+def inspect_headers(
+	docname: str | None = None,
+	import_file: str | None = None,
+	header_row: int | str = 1,
+) -> dict:
+	"""Return headers and normalized suggestions for saved or new import forms."""
+	if docname:
+		doc = frappe.get_doc("Umre Excel Import", docname)
+		doc.check_permission("read")
+		headers = (
+			inspect_headers_from_file(import_file, cint(header_row or 1))
+			if import_file
+			else inspect_import_headers(doc)
+		)
+	else:
+		if not frappe.has_permission("Umre Excel Import", "create"):
+			frappe.throw(_("Umre Excel Import oluşturma yetkisi gerekli."), frappe.PermissionError)
+		if not import_file:
+			frappe.throw(_("Önce Excel dosyasını yükleyin."))
+		headers = inspect_headers_from_file(import_file, cint(header_row or 1))
+	return {"headers": headers, "mappings": suggest_column_mappings(headers)}
 
 
 @frappe.whitelist()

@@ -10,6 +10,40 @@ from umre_ops.umre_ops.services import dashboard_service, expense_service
 
 
 class TestDashboardSeasonIsolation(TestCase):
+	def test_configured_items_are_direct_rule_rows_without_synthetic_types(self) -> None:
+		def get_all(doctype: str, **_kwargs):
+			return {
+				"Tour Hotel Cost Rule": [
+					{
+						"name": "H-M", "tur": "T-1", "lokasyon": "Mekke",
+						"gece_sayisi": 5, "birim_fiyat_sar": 375, "kur": 3.75,
+					},
+					{
+						"name": "H-D", "tur": "T-1", "lokasyon": "Medine",
+						"gece_sayisi": 3, "birim_fiyat_sar": 300, "kur": 3.75,
+					},
+				],
+				"Tour Airfare Cost Rule": [
+					{"name": "A-1", "tur": "T-1", "yolcu_tipi": "Normal", "tutar": 400}
+				],
+				"Tour Visa Cost Rule": [],
+				"Tour Diyanet Card Rule": [],
+				"Meal Cost Rule": [
+					{
+						"name": "M-1", "tour": "T-1", "mekke_price_sar": 30,
+						"medine_price_sar": 20, "sar_to_usd_rate": 3.75,
+					}
+				],
+				"Other Cost Rule": [],
+			}[doctype]
+
+		with patch.object(dashboard_service.frappe, "get_all", side_effect=get_all):
+			items = dashboard_service._configured_cost_items("1448", "T-1")
+
+		self.assertEqual([row["source_name"] for row in items], ["H-M", "H-D", "A-1", "M-1"])
+		self.assertEqual([row["value"] for row in items], [500, 240, 400, 56])
+		self.assertTrue(all(row["currency"] == "USD" for row in items))
+
 	def test_booking_metrics_always_filters_selected_season(self) -> None:
 		db = Mock()
 		db.sql.return_value = []
@@ -32,18 +66,6 @@ class TestDashboardSeasonIsolation(TestCase):
 		self.assertIn("b.tur = %(tour)s", query)
 		self.assertEqual(params, {"season": "1448", "tour": "TOUR-1"})
 
-	def test_component_rollup_always_filters_selected_season_and_tour(self) -> None:
-		db = Mock()
-		db.sql.return_value = []
-		with patch.object(dashboard_service.frappe, "db", db):
-			dashboard_service._component_rollup("1448", "TOUR-1")
-
-		query, params = db.sql.call_args.args[:2]
-		self.assertIn("JOIN `tabUmre Tour` t ON t.name = b.tur", query)
-		self.assertIn("t.season = %(season)s", query)
-		self.assertIn("b.tur = %(tour)s", query)
-		self.assertEqual(params, {"season": "1448", "tour": "TOUR-1"})
-
 	@patch.object(dashboard_service, "require_doctype_permission")
 	@patch.object(dashboard_service.frappe, "throw", side_effect=ValueError)
 	def test_cross_season_tour_is_rejected(self, _throw: Mock, _permission: Mock) -> None:
@@ -62,7 +84,9 @@ class TestDashboardSeasonIsolation(TestCase):
 		self.assertEqual(get_all.call_args.kwargs["filters"], {"season": "1448"})
 
 	@patch.object(dashboard_service, "require_doctype_permission")
-	@patch.object(dashboard_service, "_component_rollup", return_value=({}, []))
+	@patch.object(dashboard_service, "_assert_usd_tours")
+	@patch.object(dashboard_service, "_actual_component_totals", return_value={})
+	@patch.object(dashboard_service, "_configured_cost_items", return_value=[])
 	@patch.object(
 		dashboard_service,
 		"_booking_metrics",
@@ -79,7 +103,9 @@ class TestDashboardSeasonIsolation(TestCase):
 		self,
 		_get_active_season: Mock,
 		_booking_metrics: Mock,
-		_component_rollup: Mock,
+		_configured_cost_items: Mock,
+		_actual_component_totals: Mock,
+		_assert_usd_tours: Mock,
 		_permission: Mock,
 	) -> None:
 		def get_all(doctype: str, **_kwargs):
@@ -100,7 +126,9 @@ class TestDashboardSeasonIsolation(TestCase):
 		self.assertEqual(result["seasons"], [{"name": "1448", "label": "1448 Hicri"}])
 		self.assertEqual(result["tours"], [{"name": "TOUR-1", "label": "Ramazan"}])
 		_booking_metrics.assert_called_once_with("1448", None)
-		_component_rollup.assert_called_once_with("1448", None)
+		_configured_cost_items.assert_called_once_with("1448", None)
+		_actual_component_totals.assert_called_once_with("1448", None)
+		_assert_usd_tours.assert_called_once_with("1448", None)
 		tour_call = next(call for call in get_all_mock.call_args_list if call.args[0] == "Umre Tour")
 		self.assertEqual(tour_call.kwargs["filters"], {"season": "1448"})
 

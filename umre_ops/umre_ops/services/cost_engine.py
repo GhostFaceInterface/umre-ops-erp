@@ -41,7 +41,6 @@ from frappe import _
 from frappe.utils import cint, flt
 
 PAYING_STATUS = "UMRECI"
-UCAK_COMPONENT = "U\u00e7ak"
 
 # Canonical, system-managed cost types (immutable order in the report).
 CANONICAL_TYPES: list[dict] = [
@@ -136,13 +135,13 @@ def _flight_total(tur: str | None, yolcu_tipi: str | None) -> float:
 	if not (tur and yolcu_tipi):
 		return 0.0
 	name = frappe.db.get_value(
-		"Tour Passenger Cost Rule",
-		{"tur": tur, "yolcu_tipi": yolcu_tipi, "expense_component": UCAK_COMPONENT},
+		"Tour Airfare Cost Rule",
+		{"tur": tur, "yolcu_tipi": yolcu_tipi},
 		"name",
 	)
 	if not name:
 		return 0.0
-	return flt(frappe.db.get_value("Tour Passenger Cost Rule", name, "tutar") or 0)
+	return flt(frappe.db.get_value("Tour Airfare Cost Rule", name, "tutar") or 0)
 
 
 def _visa_total(tur: str | None, vize_tipi: str | None) -> float:
@@ -209,7 +208,7 @@ def _diyanet_for_umreci(
 
 
 # ---------------------------------------------------------------------------
-# Domain rules: Tour Cost Configuration / Meal Cost Rule / Other Cost Rule
+# Domain rules: Hotel / Meal / Other Cost Rule
 # ---------------------------------------------------------------------------
 
 def meal_cost_rule_exists(tour: str | None) -> bool:
@@ -228,18 +227,20 @@ def other_cost_rule_exists(tour: str | None) -> bool:
 	return bool(frappe.db.exists("Other Cost Rule", {"tour": tour}))
 
 
-def _tour_cost_config_days(tour: str | None) -> tuple[int, int]:
-	"""Mekke / Medine day counts from `Tour Cost Configuration` (defaults 0)."""
-	if not tour or not frappe.db.exists("DocType", "Tour Cost Configuration"):
+def _hotel_nights(tour: str | None) -> tuple[int, int]:
+	"""Mekke / Medine nights from the persisted hotel rule rows."""
+	if not tour:
 		return 0, 0
-	if not frappe.db.exists("Tour Cost Configuration", {"tour": tour}):
-		return 0, 0
-	row = frappe.db.get_value(
-		"Tour Cost Configuration", {"tour": tour},
-		["mekke_days", "medine_days"],
-		as_dict=True,
-	) or {}
-	return cint(row.get("mekke_days")), cint(row.get("medine_days"))
+	rows = frappe.get_all(
+		"Tour Hotel Cost Rule",
+		filters={"tur": tour, "lokasyon": ["in", ["Mekke", "Medine"]]},
+		fields=["lokasyon", "gece_sayisi"],
+		limit_page_length=0,
+	)
+	totals = {"Mekke": 0, "Medine": 0}
+	for row in rows:
+		totals[row["lokasyon"]] += cint(row.get("gece_sayisi"))
+	return totals["Mekke"], totals["Medine"]
 
 
 def _meal_per_person_usd(tour: str) -> tuple[float, str]:
@@ -249,7 +250,7 @@ def _meal_per_person_usd(tour: str) -> tuple[float, str]:
 	"""
 	if not meal_cost_rule_exists(tour):
 		return 0.0, "no meal cost rule"
-	mekke_days, medine_days = _tour_cost_config_days(tour)
+	mekke_days, medine_days = _hotel_nights(tour)
 	mr_name = frappe.db.get_value("Meal Cost Rule", {"tour": tour}, "name")
 	if not mr_name:
 		return 0.0, "no meal cost rule"
@@ -302,12 +303,8 @@ def required_system_types_for_booking(
 # ---------------------------------------------------------------------------
 
 def _booking_currency(booking) -> str:
-	"""Currency of the booking's tour. Falls back to USD for safety."""
-	tur = booking.get("tur") if isinstance(booking, dict) else getattr(booking, "tur", None)
-	if not tur:
-		return "USD"
-	curr = frappe.db.get_value("Umre Tour", tur, "para_birimi")
-	return curr or "USD"
+	"""Operational costs are canonical USD; rules carrying SAR are converted first."""
+	return "USD"
 
 
 def get_cost_components(booking) -> list[dict]:
@@ -371,8 +368,6 @@ def _make_component(
 ) -> str:
 	"""Insert a system-generated Cost Component. Returns the new doc name."""
 	amount = flt(round(flt(quantity) * flt(unit_price), 2))
-	if cost_type == "DIYANET":
-		print("FINAL DIYANET BEFORE INSERT (computed amount, qty, unit_price):", amount, quantity, unit_price, flush=True)
 	doc = frappe.get_doc({
 		"doctype": "Cost Component",
 		"booking": booking_name,
@@ -389,14 +384,6 @@ def _make_component(
 	})
 	doc.flags.ignore_system_generated_lock = True
 	doc.insert(ignore_permissions=True)
-	if cost_type == "DIYANET":
-		row = frappe.db.get_value(
-			"Cost Component",
-			doc.name,
-			["amount", "unit_price", "quantity", "name"],
-			as_dict=True,
-		)
-		print("AFTER INSERT (tabCost Component row):", row, flush=True)
 	return doc.name
 
 
@@ -437,34 +424,15 @@ def generate_components(
 	booking_name = booking_doc.name
 	tour_name = booking_doc.get("tur")
 
-	# Step 2 — must run *before* early return: proves filters vs rule even when recompute is skipped.
-	print("BOOKING:", booking_doc.name, flush=True)
-	print("STATU:", booking_doc.get("statu"), flush=True)
-	print("TOUR:", booking_doc.get("tur"), flush=True)
-	rule = frappe.db.get_value(
-		"Tour Diyanet Card Rule",
-		{"tur": tour_name},
-		["tutar", "para_birimi"],
-		as_dict=True,
-	)
-	print("DIYANET RULE:", rule, flush=True)
-
 	existing = frappe.db.count(
 		"Cost Component", {"booking": booking_name, "is_system_generated": 1}
 	)
 	if existing and not replace_system_generated:
-		print(
-			"[cost_engine] EARLY_RETURN: booking has",
-			existing,
-			"system component row(s); replace_system_generated is False (no regen, no new DIYANET).",
-			flush=True,
-		)
 		return []
 	if replace_system_generated:
 		_delete_system_generated(booking_name)
 
-	tour_doc = frappe.get_doc("Umre Tour", tour_name) if tour_name and frappe.db.exists("Umre Tour", tour_name) else None
-	currency = (tour_doc.para_birimi if tour_doc else None) or _booking_currency(booking_doc)
+	currency = _booking_currency(booking_doc)
 
 	statu = (booking_doc.get("statu") or PAYING_STATUS).strip() or PAYING_STATUS
 	created: list[str] = []
@@ -489,7 +457,7 @@ def generate_components(
 			cost_type="FLIGHT",
 			description=f"Uçak ({booking_doc.get('yolcu_tipi') or '?'})",
 			quantity=1, unit_price=flight, currency=currency,
-			source="tour_passenger_cost_rule",
+			source="tour_airfare_cost_rule",
 		))
 		# 3) VISA — visa rule for this tour + vize_tipi.
 		visa = _visa_total(tour_name, booking_doc.get("vize_tipi"))
@@ -501,9 +469,7 @@ def generate_components(
 			source="tour_visa_cost_rule",
 		))
 		# 4) DIYANET — `Tour Diyanet Card Rule` (never `diyanet_kart_var`).
-		diyanet = diyanet_rule_tutar_for_tour(tour_name)
 		diy, _diy_desc, diy_notes = _diyanet_for_umreci(tour_name, currency)
-		print("DIYANET (rule_tutar / line unit_price):", diyanet, diy, flush=True)
 		created.append(_make_component(
 			booking_name=booking_name, tour=tour_name,
 			cost_type="DIYANET",
@@ -512,17 +478,17 @@ def generate_components(
 			source="tour_diyanet_card_rule",
 			notes=diy_notes or None,
 		))
-		# 5) MEAL — `Tour Cost Configuration` + `Meal Cost Rule` (not on Umre Tour).
+		# 5) MEAL — Hotel Mekke/Medine nights + `Meal Cost Rule`.
 		if tour_name and meal_cost_rule_exists(tour_name):
 			meal_amount, meal_desc = _meal_per_person_usd(tour_name)
-			mk_d, md_d = _tour_cost_config_days(tour_name)
+			mk_d, md_d = _hotel_nights(tour_name)
 			# Kişi başı: qty=1, unit_price=per-UMRECI toplam (tüm operasyonel günler).
 			created.append(_make_component(
 				booking_name=booking_name, tour=tour_name,
 				cost_type="MEAL",
 				description=f"Yemek {meal_desc}",
 				quantity=1, unit_price=meal_amount, currency=currency,
-				source="meal_cost_rule+Tour Cost Configuration",
+				source="meal_cost_rule+tour_hotel_cost_rule",
 				notes=f"domain: mekke_days={mk_d} medine_days={md_d}",
 			))
 		# 6) OTHER — `Other Cost Rule` (kişi başı, tek bileşen satırı).
@@ -536,14 +502,6 @@ def generate_components(
 				source="other_cost_rule",
 			))
 	else:
-		print(
-			"[cost_engine] UMRECI block SKIPPED: statu is not",
-			repr(PAYING_STATUS),
-			"got",
-			repr(statu),
-			"— no HOTEL/…/DIYANET; MANUAL only.",
-			flush=True,
-		)
 		# Non-UMRECI: a single MANUAL component carrying `manual_cost`.
 		manual = flt(booking_doc.get("manual_cost") or 0)
 		if manual <= 0:
@@ -635,8 +593,15 @@ def recompute_tour_bookings(tour: str) -> dict:
 		"Umre Booking", filters={"tur": tour}, pluck="name", order_by="creation asc"
 	)
 	errors: list[dict] = []
+	skipped_posted: list[str] = []
 	for name in names:
 		try:
+			if not _lock_booking_for_recompute(name):
+				continue
+			if _has_submitted_cost_posting(name):
+				skipped_posted.append(name)
+				frappe.db.commit()
+				continue
 			recompute_components(name, skip_dashboard_publish=True)
 			frappe.db.commit()
 		except Exception as exc:  # noqa: BLE001 — tour batch: collect and continue
@@ -661,10 +626,36 @@ def recompute_tour_bookings(tour: str) -> dict:
 	return {
 		"tour": tour,
 		"bookings": len(names),
-		"recomputed": len(names) - len(errors),
+		"recomputed": len(names) - len(errors) - len(skipped_posted),
+		"skipped_posted": skipped_posted,
 		"ok": 1 if ok else 0,
 		"errors": errors,
 	}
+
+
+def _has_submitted_cost_posting(booking_name: str) -> bool:
+	"""Protect the component snapshot used by a submitted cost journal entry."""
+	je = frappe.db.get_value(
+		"Umre Posting Event",
+		{
+			"operation": "BOOKING_COSTS_JE",
+			"source_doctype": "Umre Booking",
+			"source_name": booking_name,
+			"status": "Succeeded",
+		},
+		"result_name",
+	)
+	return bool(je and frappe.db.get_value("Journal Entry", je, "docstatus") == 1)
+
+
+def _lock_booking_for_recompute(booking_name: str) -> bool:
+	"""Serialize component replacement with accounting posting for this booking."""
+	return bool(
+		frappe.db.sql(
+			"SELECT name FROM `tabUmre Booking` WHERE name = %s FOR UPDATE",
+			(booking_name,),
+		)
+	)
 
 
 @frappe.whitelist()
@@ -682,8 +673,21 @@ def recompute_components_for_tour(tour: str) -> dict:
 	tour = (tour or "").strip()
 	if not tour:
 		frappe.throw(_("tour is required."))
-	if not frappe.has_permission("Umre Tour", "read", doc=tour):
+	roles = set(frappe.get_roles())
+	if frappe.session.user != "Administrator" and "System Manager" not in roles:
+		frappe.throw(_("Not permitted to recompute tour costs."), frappe.PermissionError)
+	if not frappe.has_permission("Umre Tour", "write", doc=tour):
 		frappe.throw(_("Not permitted to recompute costs for tour {0}").format(tour))
+	booking_names = frappe.get_all("Umre Booking", filters={"tur": tour}, pluck="name")
+	unauthorized = [
+		name for name in booking_names
+		if not frappe.has_permission("Umre Booking", "write", doc=name)
+	]
+	if unauthorized:
+		frappe.throw(
+			_("Not permitted to recompute one or more bookings in this tour."),
+			frappe.PermissionError,
+		)
 	return recompute_tour_bookings(tour)
 
 
@@ -692,6 +696,10 @@ def recompute_components_for_booking(booking_name: str) -> dict:
 	"""Whitelisted desk action: refresh components for a single booking."""
 	if not frappe.has_permission("Umre Booking", "write", doc=booking_name):
 		frappe.throw(_("Not permitted to recompute components for {0}").format(booking_name))
+	if not _lock_booking_for_recompute(booking_name):
+		frappe.throw(_("Umre Booking {0} no longer exists.").format(booking_name))
+	if _has_submitted_cost_posting(booking_name):
+		frappe.throw(_("Submitted booking costs cannot be recomputed for {0}.").format(booking_name))
 	created = recompute_components(booking_name)
 	return {"booking": booking_name, "components_created": created}
 

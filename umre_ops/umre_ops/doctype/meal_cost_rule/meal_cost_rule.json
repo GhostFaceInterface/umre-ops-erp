@@ -30,6 +30,7 @@
    "in_standard_filter": 1,
    "label": "Sezon",
    "options": "Umre Season",
+   "read_only": 1,
    "reqd": 1
   },
   {
@@ -52,10 +53,11 @@
   },
   {
    "default": "3.75",
-   "description": "SAR toplam\u0131 bu b\u00f6lene; sonu\u00e7 USD (ki\u015fi ba\u015f\u0131 yemek).",
+   "description": "1 USD kar\u015f\u0131l\u0131\u011f\u0131 SAR tutar\u0131d\u0131r; otel geceleriyle hesaplanan SAR toplam\u0131 bu de\u011fere b\u00f6l\u00fcn\u00fcr.",
    "fieldname": "sar_to_usd_rate",
    "fieldtype": "Float",
-   "label": "SAR \u2192 USD Kuru",
+   "label": "SAR / USD Kuru",
+   "non_negative": 1,
    "precision": "6"
   },
   {

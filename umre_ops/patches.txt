@@ -7,6 +7,7 @@ umre_ops.patches.reconcile_schema
 umre_ops.patches.salvage_umre_tour_meal_columns_pre
 umre_ops.patches.reset_legacy_open_excel_imports
 umre_ops.patches.canonicalize_umreci_identity
+umre_ops.patches.rename_tour_passenger_to_airfare_rule
 
 [post_model_sync]
 umre_ops.patches.seed_phase2_operational_finance
@@ -25,3 +26,7 @@ umre_ops.patches.backfill_payment_date_provenance
 umre_ops.patches.backfill_umre_tour_season
 umre_ops.patches.backfill_booking_cost_policy
 umre_ops.patches.restore_july_2026_excel_prices
+umre_ops.patches.backfill_cost_rule_seasons_from_tours
+umre_ops.patches.validate_hotel_nights_replace_tour_cost_configuration
+umre_ops.patches.add_cost_rule_unique_constraints
+umre_ops.patches.normalize_cost_rule_usd_contract

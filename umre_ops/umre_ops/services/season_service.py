@@ -29,3 +29,19 @@ def apply_active_season(doc, fieldname: str = "season") -> str | None:
 	if not doc.get(fieldname):
 		doc.set(fieldname, season)
 	return doc.get(fieldname)
+
+
+def apply_tour_season(doc, tour_fieldname: str = "tour", season_fieldname: str = "season") -> str:
+	"""Copy the linked tour's season to a rule document.
+
+	The global active season is a Desk selection aid, not financial authority.
+	Cost rules always inherit their immutable accounting context from ``Umre Tour``.
+	"""
+	tour = (doc.get(tour_fieldname) or "").strip()
+	if not tour:
+		frappe.throw(_("Tur seçilmeden maliyet kuralı kaydedilemez."))
+	season = frappe.db.get_value("Umre Tour", tour, "season")
+	if not season:
+		frappe.throw(_("Seçilen turun sezonu bulunamadı: {0}").format(tour))
+	doc.set(season_fieldname, season)
+	return season

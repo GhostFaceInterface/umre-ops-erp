@@ -119,9 +119,9 @@
    "dependencies": "",
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Tour Passenger Cost Rule",
+   "label": "Tour Airfare Cost Rule",
    "link_count": 0,
-   "link_to": "Tour Passenger Cost Rule",
+   "link_to": "Tour Airfare Cost Rule",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link",
@@ -150,18 +150,6 @@
    "onboard": 0,
    "type": "Link",
    "icon": "card"
-  },
-  {
-   "dependencies": "",
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Tur Maliyet Konfigürasyonu",
-   "link_count": 0,
-   "link_to": "Tour Cost Configuration",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link",
-   "icon": "calendar"
   },
   {
    "dependencies": "",

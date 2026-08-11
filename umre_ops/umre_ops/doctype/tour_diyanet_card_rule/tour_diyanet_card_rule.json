@@ -27,6 +27,7 @@
    "in_standard_filter": 1,
    "label": "Sezon",
    "options": "Umre Season",
+   "read_only": 1,
    "reqd": 1
   },
   {
@@ -39,7 +40,8 @@
    "fieldname": "para_birimi",
    "fieldtype": "Link",
    "label": "Para birimi",
-   "options": "Currency"
+   "options": "Currency",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,

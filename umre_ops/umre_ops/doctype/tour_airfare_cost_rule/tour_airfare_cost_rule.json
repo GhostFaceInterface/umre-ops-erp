@@ -1,0 +1,25 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "TAFR-.YYYY.-.#####",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": ["temel_section", "tur", "season", "yolcu_tipi", "tutar", "para_birimi", "not"],
+ "fields": [
+  {"fieldname":"temel_section","fieldtype":"Section Break","label":"Temel"},
+  {"fieldname":"tur","fieldtype":"Link","in_list_view":1,"label":"Tur","options":"Umre Tour","reqd":1},
+  {"fieldname":"season","fieldtype":"Link","in_list_view":1,"in_standard_filter":1,"label":"Sezon","options":"Umre Season","read_only":1,"reqd":1},
+  {"fieldname":"yolcu_tipi","fieldtype":"Select","in_list_view":1,"label":"Yolcu Tipi","options":"Normal\nÇocuk\nBebek","reqd":1},
+  {"fieldname":"tutar","fieldtype":"Currency","in_list_view":1,"label":"Uçak Tutarı","non_negative":1,"options":"para_birimi","reqd":1},
+  {"default":"USD","fieldname":"para_birimi","fieldtype":"Link","label":"Para Birimi","options":"Currency","read_only":1,"reqd":1},
+  {"fieldname":"not","fieldtype":"Small Text","label":"Not"}
+ ],
+ "grid_page_length": 50,
+ "module": "Umre Ops",
+ "name": "Tour Airfare Cost Rule",
+ "naming_rule": "Expression",
+ "permissions": [{"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"report":1,"role":"System Manager","share":1,"write":1}],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
