@@ -7,32 +7,25 @@ frappe.ui.form.on("Umre Excel Import", {
 
 		if (!locked && frm.doc.import_file) {
 			frm.add_custom_button(__("Başlıkları Oku"), () => load_headers(frm));
-			if (frm.is_new()) return;
-			const pending = (frm.doc.staged_rows || []).find(
-				(row) => row.row_status === "Pending Referral" && row.referral_text
-			);
-			if (pending) {
-				frm.add_custom_button(__("Bekleyen Referansı Oluştur"), () => frappe.confirm(
-					__("Yeni referans kaynağı oluşturulsun mu: {0}", [pending.referral_text]),
-					() => frappe.call({
-						method: "umre_ops.umre_ops.doctype.umre_excel_import.umre_excel_import.create_referral",
-						args: { docname: frm.doc.name, referral_text: pending.referral_text },
-						callback: () => frm.reload_doc(),
-					})
-				));
+			if (!frm.is_new()) {
+				const pending = (frm.doc.staged_rows || []).find(
+					(row) => row.row_status === "Pending Referral" && row.referral_text
+				);
+				if (pending) {
+					frm.add_custom_button(__("Bekleyen Referansı Oluştur"), () => frappe.confirm(
+						__("Yeni referans kaynağı oluşturulsun mu: {0}", [pending.referral_text]),
+						() => frappe.call({
+							method: "umre_ops.umre_ops.doctype.umre_excel_import.umre_excel_import.create_referral",
+							args: { docname: frm.doc.name, referral_text: pending.referral_text },
+							callback: () => frm.reload_doc(),
+						})
+					));
+				}
 			}
-			frm.add_custom_button(__("Validate / Dry Run"), async () => {
-				if (frm.is_dirty()) await frm.save();
-				frm.call({
-					method: "umre_ops.umre_ops.doctype.umre_excel_import.umre_excel_import.validate_import",
-					args: { docname: frm.doc.name }, freeze: true,
-					freeze_message: __("Excel dosyası doğrulanıyor..."),
-					callback: (r) => { if (r.message) { show_summary(r.message); frm.reload_doc(); } },
-				});
-			});
+			frm.add_custom_button(__("Ön Kontrol"), () => run_preflight(frm));
 		}
 		if (frm.doc.status === "Validated" && !frm.doc.row_errors) {
-			frm.add_custom_button(__("Start Import"), () => frappe.confirm(
+			frm.add_custom_button(__("İçe Aktar"), () => frappe.confirm(
 				__("Hazır satırlar aktarılacak; bekleyen referans ve çakışmalar atlanacak. Devam?"),
 				() => frm.call({
 					method: "umre_ops.umre_ops.doctype.umre_excel_import.umre_excel_import.start_import",
@@ -93,6 +86,18 @@ async function load_headers(frm) {
 		message: headers.map(frappe.utils.escape_html).join("<br>") +
 			`<p class="text-muted">${__("Eşleşmeyen hedefleri tabloda elle seçin.")}</p>`,
 	});
+}
+
+async function run_preflight(frm) {
+	if (frm.is_new() || frm.is_dirty()) await frm.save();
+	const response = await frm.call({
+		method: "umre_ops.umre_ops.doctype.umre_excel_import.umre_excel_import.validate_import",
+		args: { docname: frm.doc.name },
+		freeze: true,
+		freeze_message: __("Excel dosyası ön kontrolden geçiriliyor..."),
+	});
+	if (response.message) show_summary(response.message);
+	await frm.reload_doc();
 }
 
 function invalidate_source(frm, clear_mapping) {

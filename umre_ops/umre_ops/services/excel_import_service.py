@@ -396,6 +396,8 @@ def _validated_mapping(import_doc, headers: list[str]) -> dict[str, str]:
 	mapping: dict[str, str] = {}
 	for row in import_doc.get("column_mappings") or []:
 		target = preserve_excel_text(row.target_field)
+		if is_blank(row.source_column):
+			continue
 		source = header_by_key.get(header_key(row.source_column))
 		if target in mapping:
 			frappe.throw(_("Aynı hedef alan birden fazla kez eşlenemez: {0}").format(target))

@@ -176,6 +176,11 @@ class IntegrationTestUmreExcelImport(IntegrationTestCase):
 		doc = make_import()
 		mapping = _validated_mapping(doc, [field.lower() for field in IMPORT_FIELDS])
 		self.assertEqual(tuple(mapping), IMPORT_FIELDS)
+		doc.column_mappings[0].source_column = None
+		with self.assertRaises(frappe.ValidationError):
+			_validated_mapping(doc, list(IMPORT_FIELDS))
+
+		doc = make_import()
 		doc.column_mappings = [
 			row for row in doc.column_mappings if row.target_field != "FİYAT"
 		]
