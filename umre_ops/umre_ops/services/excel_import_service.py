@@ -20,11 +20,14 @@ from frappe.utils import cint, flt, getdate, now
 from frappe.utils.background_jobs import is_job_enqueued
 from openpyxl import load_workbook
 
+from umre_ops.umre_ops.services import cost_engine
+
 DOCTYPE_IMPORT = "Umre Excel Import"
 DOCTYPE_UMRECI = "Umreci"
 DOCTYPE_BOOKING = "Umre Booking"
 DOCTYPE_REFERRAL = "Referral Source"
 RETRYABLE_IMPORT_ERRORS = (frappe.db.InternalError, frappe.RetryBackgroundJobError)
+READY_ROW_STATUSES = {"Create Ready", "Update Ready", "No-op"}
 
 IMPORT_FIELDS = (
 	"TC KİMLİK",
@@ -49,6 +52,7 @@ STATUS_ALLOWLIST = {
 	"SIRKET_MUDURU",
 	"SIRKET_MUDURU_ESI",
 	"SIRKET_MUDURU_COCUGU",
+	"FREE",
 }
 NATIONALITY_CODES = {
 	"tc": "TC",
@@ -161,6 +165,12 @@ class ImportSourceSnapshot:
 	target_tour: str | None
 	header_row: int
 	mapping_signature: str
+
+
+class ImportRowError(Exception):
+	def __init__(self, message: str, staged_row: dict[str, Any]):
+		super().__init__(message)
+		self.staged_row = staged_row
 
 
 def header_key(value: Any) -> str:
@@ -322,7 +332,7 @@ def make_source_snapshot(import_doc) -> ImportSourceSnapshot:
 
 
 def validate_dry_run_snapshot(snapshot: ImportSourceSnapshot, current_doc) -> None:
-	if current_doc.status in {"Queued", "Processing", "Completed"}:
+	if current_doc.status in {"Queued", "Processing", "Partially Completed", "Completed"}:
 		frappe.throw(_("Bu aktarımın durumu değişti; kuru çalıştırma sonucu kaydedilmedi."))
 	if make_source_snapshot(current_doc) != snapshot:
 		frappe.throw(
@@ -525,6 +535,9 @@ def _normalize_row(row: dict[str, Any], _tour: str) -> dict[str, Any]:
 	arrival, return_city = split_cities(row["GELDİĞİ İL"])
 	room = map_oda_tipi(row["ODA SAYISI"])
 	status = normalize_status(row["YOLCU STATÜSÜ"])
+	referral_text = preserve_excel_text(row.get("KİMDEN"))
+	if status == "UMRECI" and not referral_text:
+		frappe.throw(_("KİMDEN yalnız UMRECI statüsündeki yolcular için zorunludur."))
 	price = safe_float(row["FİYAT"])
 	paid = safe_float(row["ÖDEDİĞİ MİKTAR"])
 	if price < 0:
@@ -555,7 +568,7 @@ def _normalize_row(row: dict[str, Any], _tour: str) -> dict[str, Any]:
 		"oda_tipi": room,
 		"arrival_city": arrival,
 		"return_city": return_city,
-		"referral_text": preserve_excel_text(row["KİMDEN"]),
+		"referral_text": referral_text,
 		"statu": status,
 		"ucret": price,
 		"bildirilen_odenen": paid,
@@ -570,10 +583,10 @@ def _row_key(tour: str, normalized: dict[str, Any]) -> str:
 
 
 def _booking_matches(booking, normalized: dict[str, Any], referral: str | None) -> bool:
-	fields = ("oda_tipi", "arrival_city", "return_city", "statu", "ucret", "bildirilen_odenen", "odenen")
+	fields = ("oda_tipi", "arrival_city", "return_city", "statu", "ucret", "bildirilen_odenen")
 	for field in fields:
 		left, right = booking.get(field), normalized.get(field)
-		if field in {"ucret", "bildirilen_odenen", "odenen"}:
+		if field in {"ucret", "bildirilen_odenen"}:
 			if abs(flt(left) - flt(right)) > 0.000001:
 				return False
 		elif (left or "") != (right or ""):
@@ -611,6 +624,8 @@ def _stage_row(
 		"row_number": row_number,
 		"row_key": key,
 		"tc_kimlik": normalized.get("tc_kimlik") if normalized else normalize_tc(raw.get("TC KİMLİK")),
+		"ad": normalized.get("ad") if normalized else preserve_excel_text(raw.get("AD")),
+		"soyad": normalized.get("soyad") if normalized else preserve_excel_text(raw.get("SOYAD")),
 		"raw_data": json.dumps(raw, ensure_ascii=False, default=str),
 		"normalized_data": json.dumps(normalized, ensure_ascii=False, default=str) if normalized else None,
 		"row_status": status,
@@ -618,12 +633,18 @@ def _stage_row(
 		if normalized
 		else preserve_excel_text(raw.get("KİMDEN")),
 		"referral_source": referral,
+		"umreci_link": None,
+		"booking_link": None,
+		"umreci_action": None,
+		"booking_action": None,
 		"message": message,
 	}
 
 
 def _resolved_referral(import_doc, normalized: dict[str, Any]) -> str | None:
 	text = normalized["referral_text"]
+	if not text:
+		return None
 	if text and frappe.db.exists(DOCTYPE_REFERRAL, text):
 		return text
 	if text:
@@ -641,13 +662,98 @@ def _resolved_referral(import_doc, normalized: dict[str, Any]) -> str | None:
 	return None
 
 
+def _booking_update_is_accounting_blocked(booking) -> bool:
+	"""Never mutate a snapshot already consumed by accounting or an actual payment."""
+	if cost_engine._has_submitted_cost_posting(booking.name):
+		return True
+	if flt(booking.get("odenen") or 0) > 0:
+		return True
+	return bool(frappe.db.exists(
+		"Umre Booking Payment",
+		{
+			"parent": booking.name,
+			"parenttype": DOCTYPE_BOOKING,
+			"parentfield": "payments",
+		},
+	))
+
+
+def _company_from_settings() -> str:
+	company = frappe.db.get_single_value("Umre Ops Settings", "company")
+	if not company:
+		frappe.throw(_("Umre Ops Settings üzerinde şirket seçilmelidir."))
+	return company
+
+
+def _apply_umreci_fields(umreci, normalized: dict[str, Any]) -> None:
+	for field in ("ad", "soyad", "cinsiyet", "tc_kimlik", "dogum_tarihi", "uyruk", "telefon_numarasi"):
+		umreci.set(field, normalized[field])
+
+
+def _apply_booking_fields(booking, normalized: dict[str, Any], referral: str | None) -> None:
+	booking.update({
+		"oda_tipi": normalized["oda_tipi"],
+		"kimden_geldi": referral,
+		"arrival_city": normalized["arrival_city"],
+		"return_city": normalized["return_city"],
+		"ic_hat_baglanti": normalized["arrival_city"],
+		"statu": normalized["statu"],
+		"ucret": normalized["ucret"],
+		"bildirilen_odenen": normalized["bildirilen_odenen"],
+		"cost_policy": "System Rules",
+		"cost_policy_version": "1",
+		"import_row_key": _row_key(booking.tur, normalized),
+		"is_imported": 1,
+		"locked_financials": 1,
+	})
+
+
+def _validate_component_inputs_for_import(
+	tour: str, normalized: dict[str, Any], existing_booking=None
+) -> None:
+	"""Exercise cost-rule calculations during preflight without writing documents."""
+	values = {
+		"tur": tour,
+		"oda_tipi": normalized["oda_tipi"],
+		"statu": normalized["statu"],
+		"cost_policy": "System Rules",
+		"yolcu_tipi": existing_booking.get("yolcu_tipi") if existing_booking else None,
+		"vize_tipi": existing_booking.get("vize_tipi") if existing_booking else None,
+	}
+	cost_engine.validate_component_inputs(values)
+
+
+def _lock_existing_booking(booking_name: str) -> None:
+	if not frappe.db.sql(
+		"SELECT name FROM `tabUmre Booking` WHERE name = %s FOR UPDATE", (booking_name,)
+	):
+		frappe.throw(_("Rezervasyon güncelleme sırasında bulunamadı: {0}").format(booking_name))
+
+
+def _company_block_message(booking, settings_company: str) -> str | None:
+	booking_company = booking.get("company")
+	if booking_company != settings_company:
+		return _("Rezervasyon şirketi ({0}) Umre Ops Settings şirketiyle ({1}) eşleşmiyor.").format(
+			booking_company or _("boş"), settings_company
+		)
+	return None
+
+
+def _merge_failed_row(rows: list[dict], failed_row: dict[str, Any]) -> list[dict]:
+	merged = [row for row in rows if row.get("row_number") != failed_row.get("row_number")]
+	merged.append(failed_row)
+	return sorted(merged, key=lambda row: cint(row.get("row_number")))
+
+
 def _process_row(
-	import_doc, row_number: int, raw: dict[str, Any], summary: ImportSummary, dry_run: bool
+	import_doc, row_number: int, raw: dict[str, Any], summary: ImportSummary, dry_run: bool,
+	company: str | None = None,
 ) -> dict[str, Any]:
+	company = company or _company_from_settings()
 	normalized = _normalize_row(raw, import_doc.target_tour)
 	referral = _resolved_referral(import_doc, normalized)
-	if not referral:
-		return _stage_row(
+	if normalized["statu"] == "UMRECI" and not referral:
+		staged = _stage_row(
 			import_doc,
 			row_number,
 			raw,
@@ -655,57 +761,116 @@ def _process_row(
 			"Pending Referral",
 			_("Referans kaynağı eşlenmeli veya açık eylemle oluşturulmalı."),
 		)
+		if dry_run:
+			staged["umreci_action"] = "Oluşturulacak"
+			staged["booking_action"] = "Bloklu"
+			return staged
+		frappe.throw(staged["message"])
 	existing_umreci = _find_existing_umreci(normalized["tc_kimlik"])
 	if existing_umreci:
 		umreci = frappe.get_doc(DOCTYPE_UMRECI, existing_umreci)
-		if not _umreci_matches(umreci, normalized):
-			return _stage_row(
-				import_doc,
-				row_number,
-				raw,
-				normalized,
-				"Pending Conflict",
-				_("Aynı kimlik için farklı yolcu bilgileri mevcut; manuel inceleme gerekli."),
-				referral,
-			)
 		existing_booking = _find_existing_booking(existing_umreci, import_doc.target_tour)
 		if existing_booking:
 			booking = frappe.get_doc(DOCTYPE_BOOKING, existing_booking)
-			status = (
-				"No-op" if _booking_matches(booking, normalized, referral) else "Pending Conflict"
+			company_message = _company_block_message(booking, company)
+			if company_message and booking.get("company"):
+				staged = _stage_row(
+					import_doc, row_number, raw, normalized, "Blocked Company",
+					company_message, referral,
+				)
+			elif _booking_matches(booking, normalized, referral) and _umreci_matches(umreci, normalized):
+				staged = _stage_row(import_doc, row_number, raw, normalized, "No-op", referral=referral)
+			else:
+				if company_message:
+					staged = _stage_row(
+						import_doc, row_number, raw, normalized, "Blocked Company",
+						company_message, referral,
+					)
+				elif _booking_update_is_accounting_blocked(booking):
+					staged = _stage_row(
+						import_doc, row_number, raw, normalized, "Blocked Accounting",
+						_(
+							"Muhasebeleştirilmiş maliyet veya gerçekleşmiş ödeme nedeniyle "
+							"otomatik güncelleme engellendi."
+						),
+						referral,
+					)
+				else:
+					staged = _stage_row(
+						import_doc, row_number, raw, normalized, "Update Ready", referral=referral
+					)
+			staged["umreci_link"] = existing_umreci
+			staged["booking_link"] = existing_booking
+			staged["umreci_action"] = (
+				"Değişiklik yok" if _umreci_matches(umreci, normalized) else "Güncellenecek"
 			)
-			message = (
-				None if status == "No-op" else _("Aynı kimlik ve tur için farklı verili rezervasyon mevcut.")
-			)
-			return _stage_row(import_doc, row_number, raw, normalized, status, message, referral)
+			staged["booking_action"] = {
+				"No-op": "Değişiklik yok", "Update Ready": "Güncellenecek",
+				"Blocked Accounting": "Bloklu", "Blocked Company": "Bloklu",
+			}[staged["row_status"]]
+			if dry_run or staged["row_status"] == "No-op":
+				if dry_run and staged["row_status"] == "Update Ready":
+					_validate_component_inputs_for_import(
+						import_doc.target_tour, normalized, booking
+					)
+				return staged
+			if staged["row_status"] in {"Blocked Accounting", "Blocked Company"}:
+				frappe.throw(staged["message"])
 	if dry_run:
-		return _stage_row(import_doc, row_number, raw, normalized, "Ready", referral=referral)
+		_validate_component_inputs_for_import(import_doc.target_tour, normalized)
+		staged = _stage_row(import_doc, row_number, raw, normalized, "Create Ready", referral=referral)
+		staged["umreci_link"] = existing_umreci
+		staged["umreci_action"] = "Değişiklik yok" if existing_umreci else "Oluşturulacak"
+		staged["booking_action"] = "Oluşturulacak"
+		return staged
 
 	frappe.db.savepoint(f"excel_import_row_{row_number}")
 	try:
+		umreci_changed = False
+		existing_booking = (
+			_find_existing_booking(existing_umreci, import_doc.target_tour) if existing_umreci else None
+		)
+		if existing_booking:
+			# Match accounting_service lock order: booking row first, then reload and guard.
+			_lock_existing_booking(existing_booking)
+			booking = frappe.get_doc(DOCTYPE_BOOKING, existing_booking)
+			company_message = _company_block_message(booking, company)
+			if company_message:
+				frappe.throw(company_message)
+			if _booking_update_is_accounting_blocked(booking):
+				frappe.throw(
+					_("Muhasebeleştirilmiş veya ödeme alınmış rezervasyon güncellenemez: {0}").format(
+						booking.name
+					)
+				)
 		if existing_umreci:
 			umreci = frappe.get_doc(DOCTYPE_UMRECI, existing_umreci)
+			if not _umreci_matches(umreci, normalized):
+				_apply_umreci_fields(umreci, normalized)
+				umreci.save()
+				summary.updated_umreci += 1
+				umreci_changed = True
 		else:
 			umreci = frappe.new_doc(DOCTYPE_UMRECI)
-			umreci.update(
-				{
-					key: normalized[key]
-					for key in (
-						"ad",
-						"soyad",
-						"cinsiyet",
-						"tc_kimlik",
-						"dogum_tarihi",
-						"uyruk",
-						"telefon_numarasi",
-					)
-				}
-			)
+			_apply_umreci_fields(umreci, normalized)
 			umreci.save()
 			summary.created_umreci += 1
+		if existing_booking:
+			_apply_booking_fields(booking, normalized, referral)
+			booking.flags.ignore_financial_lock = True
+			booking.save()
+			cost_engine.recompute_components(booking, skip_dashboard_publish=True)
+			summary.updated_bookings += 1
+			staged = _stage_row(import_doc, row_number, raw, normalized, "Imported", referral=referral)
+			staged["umreci_link"] = umreci.name
+			staged["booking_link"] = booking.name
+			staged["umreci_action"] = "Güncellendi" if umreci_changed else "Değişiklik yok"
+			staged["booking_action"] = "Güncellendi"
+			return staged
 		booking = frappe.get_doc(
 			{
 				"doctype": DOCTYPE_BOOKING,
+				"company": company,
 				"umreci": umreci.name,
 				"tur": import_doc.target_tour,
 				"oda_tipi": normalized["oda_tipi"],
@@ -727,7 +892,13 @@ def _process_row(
 		booking.insert()
 		summary.created_bookings += 1
 		staged = _stage_row(import_doc, row_number, raw, normalized, "Imported", referral=referral)
-		staged["message"] = booking.name
+		staged["umreci_link"] = umreci.name
+		staged["booking_link"] = booking.name
+		staged["umreci_action"] = (
+			"Oluşturuldu" if not existing_umreci
+			else ("Güncellendi" if umreci_changed else "Değişiklik yok")
+		)
+		staged["booking_action"] = "Oluşturuldu"
 		return staged
 	except Exception:
 		frappe.db.rollback(save_point=f"excel_import_row_{row_number}")
@@ -774,8 +945,6 @@ def _final_status(summary: ImportSummary, *, dry_run: bool, rows: list[dict]) ->
 		return "Failed"
 	if dry_run:
 		return "Validated"
-	if any(row["row_status"] in {"Pending Referral", "Pending Conflict"} for row in rows):
-		return "Partially Completed"
 	return "Completed"
 
 
@@ -783,25 +952,56 @@ def run_import(docname: str, *, dry_run: bool) -> dict:
 	import_doc = frappe.get_doc(DOCTYPE_IMPORT, docname)
 	import_doc.check_permission("write")
 	snapshot = make_source_snapshot(import_doc) if dry_run else None
-	if dry_run and import_doc.status in {"Queued", "Processing", "Completed"}:
+	if dry_run and import_doc.status in {"Queued", "Processing", "Partially Completed", "Completed"}:
 		frappe.throw(_("Bu durumda kuru çalıştırma yapılamaz."))
 	if not frappe.db.exists("Umre Tour", import_doc.target_tour):
 		frappe.throw(_("Hedef tur bulunamadı."))
 	content = _get_file_content(import_doc)
+	rows = _read_rows(import_doc, content)
+	if not rows:
+		frappe.throw(_("Excel dosyasında içe aktarılacak veri satırı bulunamadı."))
+	try:
+		company = _company_from_settings()
+	except Exception as exc:
+		if not dry_run:
+			raise
+		summary = ImportSummary(total_rows=len(rows), row_errors=len(rows) or 1)
+		logs = [
+			_stage_row(import_doc, row_number, raw, None, "Error", str(exc))
+			for row_number, raw in rows
+		]
+		_save_result(
+			import_doc, snapshot, summary, logs, "Failed",
+			build_validation_signature(import_doc, content),
+		)
+		return {"summary": asdict(summary), "rows": logs}
 	if not dry_run:
 		verify_validation_signature(import_doc, content)
 		_lock_import_materialization()
-	rows = _read_rows(import_doc, content)
 	summary = ImportSummary(total_rows=len(rows))
 	logs = []
+	seen_identities: set[tuple[str | None, str]] = set()
 	for row_number, raw in rows:
 		try:
-			logs.append(_process_row(import_doc, row_number, raw, summary, dry_run))
+			identity = (normalize_tc(raw.get("TC KİMLİK")), import_doc.target_tour)
+			if identity in seen_identities:
+				frappe.throw(_("Excel içinde aynı TC ve hedef tur birden fazla satırda yer alıyor."))
+			seen_identities.add(identity)
+			logs.append(_process_row(import_doc, row_number, raw, summary, dry_run, company))
 		except RETRYABLE_IMPORT_ERRORS:
 			raise
 		except Exception as exc:
 			summary.row_errors += 1
-			logs.append(_stage_row(import_doc, row_number, raw, None, "Error", str(exc)))
+			failed_row = _stage_row(import_doc, row_number, raw, None, "Error", str(exc))
+			failed_row["umreci_action"] = "Bloklu"
+			failed_row["booking_action"] = "Bloklu"
+			logs.append(failed_row)
+			if not dry_run:
+				raise ImportRowError(str(exc), failed_row) from exc
+	if dry_run and any(
+		row["row_status"] not in READY_ROW_STATUSES for row in logs
+	):
+		summary.row_errors = sum(row["row_status"] == "Error" for row in logs)
 	status = _final_status(summary, dry_run=dry_run, rows=logs)
 	_save_result(
 		import_doc,
@@ -818,14 +1018,19 @@ def run_dry_run(docname: str) -> dict:
 	return run_import(docname, dry_run=True)
 
 
-def _mark_failed_attempt(docname: str, attempt_id: str, error_log: str) -> None:
+def _mark_failed_attempt(
+	docname: str, attempt_id: str, error_log: str, failed_row: dict[str, Any] | None = None
+) -> None:
 	frappe.db.sql("select name from `tabUmre Excel Import` where name=%s for update", docname)
 	current = frappe.get_doc(DOCTYPE_IMPORT, docname)
 	if not attempt_can_run(current, attempt_id):
 		frappe.db.rollback()
 		return
 	summary = ImportSummary(total_rows=current.total_rows or 0, row_errors=(current.row_errors or 0) + 1)
-	_save_result(current, None, summary, [], "Failed", error_log=error_log)
+	rows = json.loads(current.row_log or "[]")
+	if failed_row:
+		rows = _merge_failed_row(rows, failed_row)
+	_save_result(current, None, summary, rows, "Failed", error_log=error_log)
 
 
 def run_import_job(docname: str, attempt_id: str, user: str | None = None) -> None:
@@ -849,10 +1054,10 @@ def run_import_job(docname: str, attempt_id: str, user: str | None = None) -> No
 	except RETRYABLE_IMPORT_ERRORS:
 		frappe.db.rollback()
 		raise
-	except Exception:
+	except Exception as exc:
 		error_log = frappe.get_traceback()
 		frappe.db.rollback()
-		_mark_failed_attempt(docname, attempt_id, error_log)
+		_mark_failed_attempt(docname, attempt_id, error_log, getattr(exc, "staged_row", None))
 		frappe.db.commit()
 		raise
 
@@ -879,7 +1084,13 @@ def enqueue_import(docname: str, user: str | None = None) -> dict:
 		if not is_job_enqueued(doc.job_id):
 			_enqueue_attempt(docname, doc.job_id, queue_user, after_commit=False)
 		return {"job_id": doc.job_id, "status": doc.status}
-	if doc.status != "Validated" or doc.row_errors:
+	if (
+		doc.status != "Validated"
+		or doc.row_errors
+		or cint(doc.total_rows) <= 0
+		or not (doc.get("staged_rows") or [])
+		or any(row.row_status not in READY_ROW_STATUSES for row in doc.get("staged_rows") or [])
+	):
 		frappe.throw(_("Aktarımı başlatmadan önce kuru çalıştırmayı tamamlayın."))
 	verify_validation_signature(doc)
 	attempt_id = uuid4().hex
@@ -895,7 +1106,7 @@ def enqueue_import(docname: str, user: str | None = None) -> dict:
 def resolve_referral(docname: str, referral_text: str, referral_source: str) -> None:
 	doc = frappe.get_doc(DOCTYPE_IMPORT, docname)
 	doc.check_permission("write")
-	if doc.status in {"Queued", "Processing", "Completed"}:
+	if doc.status in {"Queued", "Processing", "Partially Completed", "Completed"}:
 		frappe.throw(_("Kilitli aktarım değiştirilemez."))
 	if not frappe.db.exists(DOCTYPE_REFERRAL, referral_source):
 		frappe.throw(_("Referans kaynağı bulunamadı."))
@@ -910,7 +1121,7 @@ def resolve_referral(docname: str, referral_text: str, referral_source: str) -> 
 def create_referral(docname: str, referral_text: str) -> str:
 	doc = frappe.get_doc(DOCTYPE_IMPORT, docname)
 	doc.check_permission("write")
-	if doc.status in {"Queued", "Processing", "Completed"}:
+	if doc.status in {"Queued", "Processing", "Partially Completed", "Completed"}:
 		frappe.throw(_("Kilitli aktarım değiştirilemez."))
 	if not frappe.has_permission(DOCTYPE_REFERRAL, "create", throw=False):
 		frappe.throw(_("Referans kaynağı oluşturma yetkiniz yok."), frappe.PermissionError)

@@ -13,6 +13,7 @@ from umre_ops.umre_ops.services.excel_import_service import (
 )
 from umre_ops.umre_ops.services.excel_import_service import (
 	enqueue_import,
+	READY_ROW_STATUSES,
 	run_dry_run,
 )
 from umre_ops.umre_ops.services.excel_import_service import (
@@ -113,7 +114,7 @@ def validate_import(docname: str) -> dict:
 	"""Run validation/dry-run synchronously and store the row-level preview."""
 	_doc = frappe.get_doc("Umre Excel Import", docname)
 	_doc.check_permission("write")
-	if _doc.status in {"Queued", "Processing", "Completed"}:
+	if _doc.status in {"Queued", "Processing", "Partially Completed", "Completed"}:
 		frappe.throw(_("Kuyruktaki, işlenen veya tamamlanmış bir aktarım yeniden doğrulanamaz."))
 	return run_dry_run(docname)
 
@@ -125,6 +126,14 @@ def start_import(docname: str) -> dict:
 	_doc.check_permission("write")
 	if _doc.status in {"Queued", "Processing"} and _doc.job_id:
 		return enqueue_import(docname, user=frappe.session.user)
-	if _doc.status != "Validated" or cint(_doc.row_errors):
+	if (
+		_doc.status != "Validated"
+		or cint(_doc.row_errors)
+		or cint(_doc.total_rows) <= 0
+		or not (_doc.get("staged_rows") or [])
+		or any(
+		row.row_status not in READY_ROW_STATUSES for row in _doc.get("staged_rows") or []
+		)
+	):
 		frappe.throw(_("Aktarımı başlatmadan önce hatasız bir kuru çalıştırma yapın."))
 	return enqueue_import(docname, user=frappe.session.user)

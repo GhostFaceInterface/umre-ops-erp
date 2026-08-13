@@ -391,7 +391,7 @@
 		return Boolean(
 			data &&
 			data.kpis &&
-			Array.isArray(data.configured_cost_items) &&
+			Array.isArray(data.cost_breakdown) &&
 			data.performance &&
 			data.meta &&
 			Array.isArray(data.seasons) &&
@@ -409,7 +409,7 @@
 
 	function render_payload(panel, p) {
 		const k = p.kpis || {};
-		const rows = (p.configured_cost_items || []).map((row, idx) => ({
+		const rows = (p.cost_breakdown || []).map((row, idx) => ({
 			label: row.label || __("Maliyet"),
 			value: Number(row.value || 0),
 			color: COST_COLORS[idx % COST_COLORS.length]
@@ -417,6 +417,8 @@
 		const perf = p.performance || {};
 		const meta = p.meta || {};
 		const currency = p.currency || "USD";
+		const financialValid = p.financial_data_valid !== false;
+		const financialValue = (value) => financialValid ? fmt_money(value, currency) : "—";
 		_state.season = p.selected_season || "";
 
 		const seasonSel = panel.querySelector("#umre-fin-season");
@@ -439,8 +441,9 @@
 		const profit_loss = (k.net_profit || 0) < 0 ? "is-loss" : "";
 		hero.innerHTML = [
 			hero_cell("revenue", __("Gelir"), fmt_money(k.total_revenue, currency), ""),
-			hero_cell("cost", __("Toplam Maliyet"), fmt_money(k.total_cost, currency), __("Kişi sayısı") + ": " + fmt_int(meta.kisi_sayisi)),
-			hero_cell("profit " + profit_loss, __("Net Kar"), fmt_money(k.net_profit, currency), "")
+			hero_cell("cost", __("Toplam Maliyet"), financialValue(k.total_cost),
+				`${__("Toplam")}: ${fmt_int(meta.total_count)} · ${__("UMRECI")}: ${fmt_int(meta.umreci_count)} · ${__("Diğer")}: ${fmt_int(meta.non_umreci_count)}`),
+			hero_cell("profit " + profit_loss, __("Net Kar"), financialValue(k.net_profit), "")
 		].join("");
 
 		// Cost cards come directly from persisted rule records.
@@ -457,6 +460,13 @@
 					<div class="umre-fin-cost-card__share">${fmt_pct(share)}</div>
 				</div>`;
 		}).join("");
+		if ((p.integrity_warnings || []).length) {
+			cards.insertAdjacentHTML("afterbegin", `<div class="alert alert-warning">${frappe.utils.escape_html(
+				financialValid
+					? __("Veri bütünlüğü uyarısı: {0} rezervasyon kaydını kontrol edin.", [p.integrity_warnings.length])
+					: __("Finansal toplamlar gizlendi: eksik, yinelenen veya USD dışı maliyet bileşenleri var.")
+			)}</div>`);
+		}
 
 		// Doughnut.
 		render_chart(panel, p);
@@ -465,9 +475,9 @@
 		const kpi = panel.querySelector("#umre-fin-kpi");
 		const kbk_cls = (perf.profit_per_person || 0) < 0 ? "is-loss" : "";
 		kpi.innerHTML = [
-			kpi_cell("cost", __("Kişi Başı Maliyet"), fmt_money(perf.cost_per_person, currency)),
-			kpi_cell("profit " + kbk_cls, __("Kişi Başı Kar"), fmt_money(perf.profit_per_person, currency)),
-			kpi_cell("ratio", __("Yemek Oranı"), fmt_pct_value(perf.food_ratio))
+			kpi_cell("cost", __("Kişi Başı Maliyet"), financialValue(perf.cost_per_person)),
+			kpi_cell("profit " + kbk_cls, __("Kişi Başı Kar"), financialValue(perf.profit_per_person)),
+			kpi_cell("ratio", __("Yemek Oranı"), financialValid ? fmt_pct_value(perf.food_ratio) : "—")
 		].join("");
 	}
 
@@ -491,7 +501,7 @@
 	function render_chart(panel, p) {
 		const host = panel.querySelector("#umre-fin-chart");
 		host.innerHTML = ""; // reset
-		const rows = p.configured_cost_items || [];
+		const rows = p.cost_breakdown || [];
 		const labels = rows.map((x) => x.label);
 		const values = rows.map((x) => Number(x.value || 0));
 		if (!labels.length) {

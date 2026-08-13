@@ -2,7 +2,7 @@
 
 frappe.ui.form.on("Umre Excel Import", {
 	refresh(frm) {
-		const locked = ["Queued", "Processing", "Completed"].includes(frm.doc.status);
+		const locked = ["Queued", "Processing", "Partially Completed", "Completed"].includes(frm.doc.status);
 		frm.toggle_enable(["import_file", "target_tour", "header_row", "column_mappings"], !locked);
 
 		if (!locked && frm.doc.import_file) {
@@ -12,6 +12,25 @@ frappe.ui.form.on("Umre Excel Import", {
 					(row) => row.row_status === "Pending Referral" && row.referral_text
 				);
 				if (pending) {
+					frm.add_custom_button(__("Bekleyen Referansı Eşle"), () => frappe.prompt(
+						[{
+							fieldname: "referral_source",
+							fieldtype: "Link",
+							options: "Referral Source",
+							label: __("Referans Kaynağı"),
+							reqd: 1,
+						}],
+						(values) => frappe.call({
+							method: "umre_ops.umre_ops.doctype.umre_excel_import.umre_excel_import.resolve_referral",
+							args: {
+								docname: frm.doc.name,
+								referral_text: pending.referral_text,
+								referral_source: values.referral_source,
+							},
+							callback: () => frm.reload_doc(),
+						}),
+						__("Bekleyen Referansı Eşle")
+					));
 					frm.add_custom_button(__("Bekleyen Referansı Oluştur"), () => frappe.confirm(
 						__("Yeni referans kaynağı oluşturulsun mu: {0}", [pending.referral_text]),
 						() => frappe.call({
@@ -24,9 +43,13 @@ frappe.ui.form.on("Umre Excel Import", {
 			}
 			frm.add_custom_button(__("Ön Kontrol"), () => run_preflight(frm));
 		}
-		if (frm.doc.status === "Validated" && !frm.doc.row_errors) {
+		const ready = new Set(["Create Ready", "Update Ready", "No-op"]);
+		const clean_preflight = frm.doc.status === "Validated" && !frm.doc.row_errors &&
+			Number(frm.doc.total_rows || 0) > 0 && (frm.doc.staged_rows || []).length > 0 &&
+			(frm.doc.staged_rows || []).every((row) => ready.has(row.row_status));
+		if (clean_preflight) {
 			frm.add_custom_button(__("İçe Aktar"), () => frappe.confirm(
-				__("Hazır satırlar aktarılacak; bekleyen referans ve çakışmalar atlanacak. Devam?"),
+				__("Ön kontrolü temiz olan tüm satırlar tek işlem olarak aktarılacak. Devam?"),
 				() => frm.call({
 					method: "umre_ops.umre_ops.doctype.umre_excel_import.umre_excel_import.start_import",
 					args: { docname: frm.doc.name }, freeze: true,
@@ -39,7 +62,20 @@ frappe.ui.form.on("Umre Excel Import", {
 				method: "umre_ops.umre_ops.doctype.umre_excel_import.umre_excel_import.start_import",
 				args: { docname: frm.doc.name }, callback: () => frm.reload_doc(),
 			}));
+			window.clearTimeout(frm.__umre_import_poll);
+			frm.__umre_import_poll = window.setTimeout(() => frm.reload_doc(), 3000);
 		}
+		if (["Partially Completed", "Failed"].includes(frm.doc.status)) {
+			frm.add_custom_button(__("Yeni Deneme Oluştur"), () => frappe.new_doc(
+				"Umre Excel Import",
+				{
+					import_file: frm.doc.import_file,
+					target_tour: frm.doc.target_tour,
+					header_row: frm.doc.header_row || 1,
+				}
+			));
+		}
+		show_category_summary(frm);
 	},
 	async import_file(frm) {
 		invalidate_source(frm, true);
@@ -50,18 +86,6 @@ frappe.ui.form.on("Umre Excel Import", {
 		if (frm.doc.import_file) await load_headers(frm);
 	},
 	target_tour(frm) { invalidate_source(frm, false); },
-});
-
-frappe.ui.form.on("Umre Excel Import Row", {
-	referral_source(frm, cdt, cdn) {
-		const row = locals[cdt][cdn];
-		if (!row.referral_source) return;
-		frappe.call({
-			method: "umre_ops.umre_ops.doctype.umre_excel_import.umre_excel_import.resolve_referral",
-			args: { docname: frm.doc.name, referral_text: row.referral_text, referral_source: row.referral_source },
-			callback: () => frm.reload_doc(),
-		});
-	},
 });
 
 async function load_headers(frm) {
@@ -121,4 +145,15 @@ function show_summary(result) {
 		indicator: summary.row_errors ? "orange" : "green",
 		message: `${__("Total Rows")}: ${summary.total_rows || 0}<br>${__("Row Errors")}: ${summary.row_errors || 0}`,
 	});
+}
+
+function show_category_summary(frm) {
+	const counts = (frm.doc.staged_rows || []).reduce((out, row) => {
+		out[row.row_status] = (out[row.row_status] || 0) + 1;
+		return out;
+	}, {});
+	const html = Object.entries(counts).map(([status, count]) =>
+		`${frappe.utils.escape_html(__(status))}: ${frappe.utils.escape_html(String(count))}`
+	).join(" · ");
+	frm.set_intro(html || null, Object.keys(counts).some((key) => !["Create Ready", "Update Ready", "No-op", "Imported"].includes(key)) ? "orange" : "blue");
 }

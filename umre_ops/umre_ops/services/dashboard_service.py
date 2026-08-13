@@ -38,8 +38,9 @@ from typing import Any
 
 import frappe
 from frappe import _
-from frappe.utils import flt
+from frappe.utils import cint, flt
 
+from umre_ops.umre_ops.services import cost_engine
 from umre_ops.umre_ops.services.expense_service import get_operational_dashboard_summary
 from umre_ops.umre_ops.services.permission_service import require_doctype_permission
 from umre_ops.umre_ops.services.season_service import get_active_season
@@ -55,6 +56,10 @@ CHART_HEX_BY_CODE: dict[str, str] = {
 	"MEAL":    "#597ef7",
 	"OTHER":   "#9254de",
 	"MANUAL":  "#13c2c2",
+}
+COST_LABEL_BY_CODE: dict[str, str] = {
+	"HOTEL": "Otel", "FLIGHT": "Uçak", "VISA": "Vize", "DIYANET": "Diyanet",
+	"MEAL": "Yemek", "OTHER": "Diğer", "MANUAL": "Manuel",
 }
 
 
@@ -101,10 +106,19 @@ def _assert_usd_tours(season: str, tour: str | None) -> None:
 		)
 
 
-def _booking_metrics(season: str, tour: str | None) -> dict[str, float]:
+def _company_context() -> str:
+	company = frappe.db.get_single_value("Umre Ops Settings", "company")
+	if not company:
+		frappe.throw(_("Umre Ops Settings üzerinde şirket seçilmelidir."))
+	company_doc = frappe.get_doc("Company", company)
+	company_doc.check_permission("read")
+	return company
+
+
+def _booking_metrics(season: str, tour: str | None, company: str) -> dict[str, float]:
 	"""Single SQL: per-tour or all-tours booking-side aggregates."""
 	where = "WHERE t.season = %(season)s"
-	params: dict[str, Any] = {"season": season}
+	params: dict[str, Any] = {"season": season, "company": company}
 	if tour:
 		where += " AND b.tur = %(tour)s"
 		params["tour"] = tour
@@ -119,7 +133,7 @@ def _booking_metrics(season: str, tour: str | None) -> dict[str, float]:
 		  SUM(CASE WHEN b.statu = 'UMRECI' THEN b.odenen ELSE 0 END) AS tahsil_edilen
 		FROM `tabUmre Booking` b
 		JOIN `tabUmre Tour` t ON t.name = b.tur
-		{where}
+		{where} AND (b.company = %(company)s OR COALESCE(b.company, '') = '')
 		""",
 		params,
 		as_dict=True,
@@ -134,10 +148,10 @@ def _booking_metrics(season: str, tour: str | None) -> dict[str, float]:
 	}
 
 
-def _actual_component_totals(season: str, tour: str | None) -> dict[str, float]:
-	"""Return historical booking-component totals without feeding the rule chart."""
+def _actual_component_totals(season: str, tour: str | None, company: str) -> dict[str, float]:
+	"""Return USD booking-component totals grouped by their persisted cost type."""
 	where = "WHERE t.season = %(season)s"
-	params: dict[str, Any] = {"season": season}
+	params: dict[str, Any] = {"season": season, "company": company}
 	if tour:
 		where += " AND b.tur = %(tour)s"
 		params["tour"] = tour
@@ -148,12 +162,65 @@ def _actual_component_totals(season: str, tour: str | None) -> dict[str, float]:
 		JOIN `tabUmre Booking` b ON b.name = c.booking
 		JOIN `tabUmre Tour` t ON t.name = b.tur
 		{where}
+		  AND (b.company = %(company)s OR COALESCE(b.company, '') = '')
+		  AND c.currency = %(currency)s
 		GROUP BY c.cost_type
+		""",
+		{**params, "currency": CURRENCY},
+		as_dict=True,
+	)
+	return {row["cost_type"]: flt(row.get("total") or 0) for row in rows}
+
+
+def _component_integrity_warnings(
+	season: str, tour: str | None, company: str
+) -> list[dict[str, Any]]:
+	"""Make incomplete or mixed-currency snapshots visible instead of summing them."""
+	where = "WHERE t.season = %(season)s"
+	params: dict[str, Any] = {"season": season, "currency": CURRENCY, "company": company}
+	if tour:
+		where += " AND b.tur = %(tour)s"
+		params["tour"] = tour
+	rows = frappe.db.sql(
+		f"""
+		SELECT b.name AS booking, b.company, b.tur, b.statu, b.cost_policy,
+		       c.name AS component, c.cost_type, c.currency, c.is_system_generated
+		FROM `tabUmre Booking` b
+		JOIN `tabUmre Tour` t ON t.name = b.tur
+		LEFT JOIN `tabCost Component` c ON c.booking = b.name
+		{where} AND (b.company = %(company)s OR COALESCE(b.company, '') = '')
 		""",
 		params,
 		as_dict=True,
 	)
-	return {row["cost_type"]: flt(row.get("total") or 0) for row in rows}
+	by_booking: dict[str, dict[str, Any]] = {}
+	for row in rows:
+		entry = by_booking.setdefault(row["booking"], {"booking": row, "components": []})
+		if row.get("component"):
+			entry["components"].append(row)
+	warnings = []
+	for booking_name, entry in by_booking.items():
+		booking = entry["booking"]
+		components = entry["components"]
+		if not booking.get("company"):
+			warnings.append({"code": "MISSING_COMPANY", "booking": booking_name,
+				"message": _("Şirketi boş tarihi rezervasyon Settings şirketi kapsamında gösteriliyor.")})
+		required = cost_engine.required_system_types_for_booking(
+			booking.get("tur"), booking.get("statu"), booking.get("cost_policy")
+		)
+		system_types = [row.get("cost_type") for row in components if cint(row.get("is_system_generated"))]
+		missing = [code for code in required if code not in system_types]
+		if missing:
+			warnings.append({"code": "MISSING_COMPONENT", "booking": booking_name,
+				"message": _("Eksik zorunlu bileşenler: {0}").format(", ".join(missing))})
+		duplicates = sorted({code for code in system_types if system_types.count(code) > 1})
+		if duplicates:
+			warnings.append({"code": "DUPLICATE_COMPONENT", "booking": booking_name,
+				"message": _("Yinelenen sistem bileşenleri: {0}").format(", ".join(duplicates))})
+		if any((row.get("currency") or "") != CURRENCY for row in components):
+			warnings.append({"code": "NON_USD_COMPONENT", "booking": booking_name,
+				"message": _("Rezervasyonda USD dışı maliyet bileşeni var.")})
+	return warnings
 
 
 def _configured_cost_items(season: str, tour: str | None) -> list[dict[str, Any]]:
@@ -280,26 +347,46 @@ def get_tour_cost_breakdown(
 		if tour_row.get("season") != season:
 			frappe.throw(_("Seçilen tur {0} sezonuna ait değil.").format(season))
 	_assert_usd_tours(season, tour)
+	company = _company_context()
 
-	booking = _booking_metrics(season, tour)
+	booking = _booking_metrics(season, tour, company)
 	configured_cost_items = _configured_cost_items(season, tour)
-	actual_components = _actual_component_totals(season, tour)
-	total_cost = flt(sum(actual_components.values()), 2)
-	total_revenue = flt(booking["gelir"], 2)
-	net_profit = flt(total_revenue - total_cost, 2)
-	kisi = booking["kisi_sayisi"] or 0
-	cost_per_person = flt(total_cost / kisi, 2) if kisi else 0.0
-	profit_per_person = flt(net_profit / kisi, 2) if kisi else 0.0
-	meal_total = actual_components.get("MEAL", 0)
-	food_ratio = flt((meal_total / total_cost) * 100, 2) if total_cost > 0 else 0.0
+	actual_components = _actual_component_totals(season, tour, company)
+	integrity_warnings = _component_integrity_warnings(season, tour, company)
+	financial_data_valid = not any(
+		row["code"] in {
+			"MISSING_COMPANY", "MISSING_COMPONENT", "DUPLICATE_COMPONENT", "NON_USD_COMPONENT",
+		}
+		for row in integrity_warnings
+	)
 	cost_breakdown = [
 		{
-			"label": row["label"],
-			"value": row["value"],
+			"key": cost_type,
+			"label": COST_LABEL_BY_CODE.get(cost_type, cost_type),
+			"value": flt(value, 2),
+			"currency": CURRENCY,
 		}
-		for row in configured_cost_items
+		for cost_type, value in sorted(actual_components.items())
 	]
-
+	observed_total_cost = flt(sum(row["value"] for row in cost_breakdown), 2)
+	total_cost = observed_total_cost if financial_data_valid else None
+	total_revenue = flt(booking["gelir"], 2)
+	net_profit = flt(total_revenue - observed_total_cost, 2) if financial_data_valid else None
+	kisi = booking["kisi_sayisi"] or 0
+	cost_per_person = (
+		flt(observed_total_cost / kisi, 2)
+		if financial_data_valid and kisi else (0.0 if financial_data_valid else None)
+	)
+	profit_per_person = (
+		flt(net_profit / kisi, 2)
+		if financial_data_valid and kisi else (0.0 if financial_data_valid else None)
+	)
+	meal_total = next((row["value"] for row in cost_breakdown if row["key"] == "MEAL"), 0)
+	food_ratio = (
+		flt((meal_total / observed_total_cost) * 100, 2)
+		if financial_data_valid and observed_total_cost > 0
+		else (0.0 if financial_data_valid else None)
+	)
 	return {
 		"currency": CURRENCY,
 		"selected_season": season,
@@ -312,6 +399,8 @@ def get_tour_cost_breakdown(
 			"net_profit": net_profit,
 		},
 		"cost_breakdown": cost_breakdown,
+		"integrity_warnings": integrity_warnings,
+		"financial_data_valid": financial_data_valid,
 		"configured_cost_items": configured_cost_items,
 		"performance": {
 			"cost_per_person": cost_per_person,
@@ -320,6 +409,11 @@ def get_tour_cost_breakdown(
 		},
 		"meta": {
 			"kisi_sayisi": booking["kisi_sayisi"],
+			"total_count": booking["kisi_sayisi"],
+			"umreci_count": booking["umreci_count"],
+			"non_umreci_count": booking["non_umreci_count"],
+			"company": company,
+			"includes_missing_company_as_settings_company": True,
 		},
 	}
 

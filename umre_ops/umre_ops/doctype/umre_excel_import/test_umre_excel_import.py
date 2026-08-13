@@ -11,6 +11,8 @@ from umre_ops.umre_ops.services.excel_import_service import (
 	IMPORT_FIELDS,
 	ImportSummary,
 	_final_status,
+	_company_block_message,
+	_merge_failed_row,
 	_normalize_row,
 	_read_single_worksheet,
 	_validated_mapping,
@@ -29,6 +31,7 @@ from umre_ops.umre_ops.services.excel_import_service import (
 	split_cities,
 	validate_dry_run_snapshot,
 	verify_validation_signature,
+	READY_ROW_STATUSES,
 )
 
 
@@ -95,17 +98,29 @@ class IntegrationTestUmreExcelImport(IntegrationTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			_read_single_worksheet(make_workbook("Ocak", "Şubat"))
 
-	def test_pending_rows_keep_import_resumable(self) -> None:
-		self.assertEqual(
-			_final_status(
-				ImportSummary(), dry_run=False, rows=[{"row_status": "Pending Referral"}]
-			),
-			"Partially Completed",
-		)
+	def test_actual_import_completes_only_without_row_errors(self) -> None:
 		self.assertEqual(
 			_final_status(ImportSummary(), dry_run=False, rows=[{"row_status": "Imported"}]),
 			"Completed",
 		)
+		self.assertEqual(_final_status(ImportSummary(row_errors=1), dry_run=False, rows=[]), "Failed")
+
+	def test_preflight_status_allowlist_is_fail_closed(self) -> None:
+		self.assertEqual(READY_ROW_STATUSES, {"Create Ready", "Update Ready", "No-op"})
+		for legacy_or_blocked in ("Ready", "Pending Conflict", "Pending Referral", "Blocked Company"):
+			self.assertNotIn(legacy_or_blocked, READY_ROW_STATUSES)
+
+	def test_company_mismatch_and_blank_are_blocked(self) -> None:
+		self.assertIsNone(_company_block_message(FakeImport(company="ACME"), "ACME"))
+		self.assertTrue(_company_block_message(FakeImport(company="OTHER"), "ACME"))
+		self.assertTrue(_company_block_message(FakeImport(company=None), "ACME"))
+
+	def test_failed_row_replaces_preflight_row_and_preserves_audit(self) -> None:
+		rows = [{"row_number": 2, "row_status": "Create Ready"}, {"row_number": 3}]
+		failed = {"row_number": 2, "row_status": "Error", "ad": "Ali", "soyad": "Veli", "message": "boom"}
+		merged = _merge_failed_row(rows, failed)
+		self.assertEqual(merged[0], failed)
+		self.assertEqual([row["row_number"] for row in merged], [2, 3])
 
 	def test_non_paying_status_cannot_report_a_payment(self) -> None:
 		row = {
@@ -151,6 +166,15 @@ class IntegrationTestUmreExcelImport(IntegrationTestCase):
 			**{"FİYAT": "0", "ÖDEDİĞİ MİKTAR": "0", "YOLCU STATÜSÜ": "HOCA"}
 		)
 		self.assertEqual(_normalize_row(row, "TUR-1")["ucret"], 0)
+
+	def test_referral_is_required_only_for_umreci_and_free_is_allowed(self) -> None:
+		with self.assertRaises(frappe.ValidationError):
+			_normalize_row(self._valid_row(**{"KİMDEN": ""}), "TUR-1")
+		for status in ("HOCA", "FREE"):
+			row = self._valid_row(**{
+				"KİMDEN": "", "FİYAT": "0", "ÖDEDİĞİ MİKTAR": "0", "YOLCU STATÜSÜ": status,
+			})
+			self.assertEqual(_normalize_row(row, "TUR-1")["referral_text"], "")
 
 	@staticmethod
 	def _valid_row(**overrides):

@@ -298,6 +298,26 @@ def required_system_types_for_booking(
 	return tuple(req)
 
 
+def validate_component_inputs(booking) -> None:
+	"""Read-only validation of the rule inputs used during component generation."""
+	tour = booking.get("tur")
+	statu = (booking.get("statu") or PAYING_STATUS).strip() or PAYING_STATUS
+	if statu == PAYING_STATUS or booking.get("cost_policy") == "System Rules":
+		_hotel_total(tour, booking.get("oda_tipi"))
+		_flight_total(tour, booking.get("yolcu_tipi"))
+		_visa_total(tour, booking.get("vize_tipi"))
+		_diyanet_for_umreci(tour, _booking_currency(booking))
+		if tour and meal_cost_rule_exists(tour):
+			_meal_per_person_usd(tour)
+		if tour and other_cost_rule_exists(tour):
+			_other_per_person(tour)
+		return
+	if flt(booking.get("manual_cost") or 0) <= 0:
+		frappe.throw(
+			_("Non-UMRECI bookings MUST carry a positive manual cost for Legacy Manual policy.")
+		)
+
+
 # ---------------------------------------------------------------------------
 # Component access
 # ---------------------------------------------------------------------------
