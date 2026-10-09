@@ -67,7 +67,7 @@ def get_tour_history(umreci: str) -> list[dict]:
 		SELECT
 			b.name AS booking, b.tur, t.tur_adi, t.baslangic_tarihi, t.bitis_tarihi,
 			b.statu, b.oda_tipi, b.ucret, b.odenen, t.para_birimi,
-			(b.ucret - b.odenen) AS bakiye
+			(b.ucret - IFNULL(b.kms, 0) - b.odenen) AS bakiye
 		FROM `tabUmre Booking` b
 		JOIN `tabUmre Tour` t ON t.name = b.tur
 		WHERE b.umreci = %s

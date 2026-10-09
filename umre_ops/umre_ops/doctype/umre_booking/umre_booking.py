@@ -23,21 +23,15 @@ CLOSED_TOUR_STATUSES = frozenset({"İptal", "Kapandı"})
 
 
 class UmreBooking(Document):
-	"""Imported financial truth; cost components follow every cost-driving change."""
+	"""Passenger booking; cost components follow every cost-driving change."""
 
 	def validate(self) -> None:
 		self._enforce_booking_identity()
 		for payment in self.get("payments") or []:
 			validate_payment_date_provenance(payment)
-		# 1) Hard immutability gate. If `locked_financials` is set we forbid ANY
-		#    change to `statu`, `ucret`, or `manual_cost` from this point on.
-		#    Bypass is intentional and explicit via `flags.ignore_financial_lock`
-		#    (used only by the corrective patch).
-		self._enforce_financial_lock()
 		self._enforce_posted_payment_lock()
 
-		# 2) Pure read-only "soft defaults" (`vize_tipi`, `yolcu_tipi`). These
-		#    NEVER touch financial fields.
+		# Soft defaults (`vize_tipi`, `yolcu_tipi`); never touch financial fields.
 		if not getattr(self, "flags", None) or not self.flags.get("ignore_booking_recalc"):
 			apply_to_booking(self)
 
@@ -141,71 +135,6 @@ class UmreBooking(Document):
 			publish_dashboard_dirty(self.tur)
 		except Exception:
 			frappe.log_error(title="dashboard publish failed (booking after_insert)")
-
-	def _enforce_financial_lock(self) -> None:
-		"""Reject silent mutation of locked financial fields.
-
-		Imported financial inputs are immutable after `locked_financials = 1`:
-		`statu`, `ucret`, `manual_cost`, `bildirilen_odenen`, and the cost-policy
-		provenance fields. The previous data-corruption pattern
-		(re-import or `validate()` re-save silently rewriting these) is
-		structurally impossible while this guard is in place.
-		"""
-		if self.is_new() or not self.get("locked_financials"):
-			return
-		flags = getattr(self, "flags", None)
-		if flags is not None and flags.get("ignore_financial_lock"):
-			return
-		db_doc = frappe.db.get_value(
-			"Umre Booking",
-			self.name,
-			[
-				"statu",
-				"ucret",
-				"manual_cost",
-				"bildirilen_odenen",
-				"cost_policy",
-				"cost_policy_version",
-				"import_row_key",
-			],
-			as_dict=True,
-		)
-		if not db_doc:
-			return
-
-		new_statu = (self.get("statu") or "").strip()
-		old_statu = (db_doc.get("statu") or "").strip()
-		if new_statu != old_statu:
-			frappe.throw(
-				_("Locked field 'statu' cannot be modified after import (was {0}, attempted {1}).").format(
-					old_statu or "?", new_statu or "?"
-				)
-			)
-		new_ucret = flt(self.get("ucret") or 0)
-		old_ucret = flt(db_doc.get("ucret") or 0)
-		if abs(new_ucret - old_ucret) > 0.01:
-			frappe.throw(
-				_("Locked field 'ucret' cannot be modified after import (was {0}, attempted {1}).").format(
-					old_ucret, new_ucret
-				)
-			)
-		new_mc = flt(self.get("manual_cost") or 0)
-		old_mc = flt(db_doc.get("manual_cost") or 0)
-		if abs(new_mc - old_mc) > 0.01:
-			frappe.throw(
-				_("Locked field 'manual_cost' cannot be modified after import (was {0}, attempted {1}).").format(
-					old_mc, new_mc
-				)
-			)
-		new_reported = flt(self.get("bildirilen_odenen") or 0)
-		old_reported = flt(db_doc.get("bildirilen_odenen") or 0)
-		if abs(new_reported - old_reported) > 0.01:
-			frappe.throw(
-				_("Locked field 'bildirilen_odenen' cannot be modified after import.")
-			)
-		for field in ("cost_policy", "cost_policy_version", "import_row_key"):
-			if str(self.get(field) or "") != str(db_doc.get(field) or ""):
-				frappe.throw(_("Locked field '{0}' cannot be modified after import.").format(field))
 
 	def _sync_paid_amount_from_payments(self) -> None:
 		"""Keep `odenen` equal to the sum of valid payment rows in the tour currency.

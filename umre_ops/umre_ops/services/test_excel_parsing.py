@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 from unittest import TestCase
+from unittest.mock import patch
 
 import frappe
 
@@ -154,3 +155,53 @@ class TestPreflightWarnings(TestCase):
 
 	def test_no_warning_for_clean_row(self) -> None:
 		self.assertIsNone(svc._preflight_warnings({"statu": "UMRECI", "ucret": 1300}, []))
+
+
+class FakeBooking(dict):
+	def __getattr__(self, key):
+		return self.get(key)
+
+	def append(self, table, row) -> None:
+		self.setdefault(table, []).append(FakePayment(row))
+
+	def remove(self, row) -> None:
+		self["payments"].remove(row)
+
+
+class FakePayment(dict):
+	def __getattr__(self, key):
+		return self.get(key)
+
+	def __setattr__(self, key, value) -> None:
+		self[key] = value
+
+
+class TestExcelPayment(TestCase):
+	def booking(self, *payments) -> FakeBooking:
+		return FakeBooking(name="UMB-1", tur="TUR-1", umreci="U-1", payments=[FakePayment(p) for p in payments])
+
+	def sync(self, booking, amount) -> None:
+		with patch.object(svc.frappe, "db") as db:
+			db.get_value.return_value = "USD"
+			svc._sync_excel_payment(booking, amount, "IMP-1", 3)
+
+	def test_paid_amount_becomes_one_payment_row(self) -> None:
+		booking = self.booking()
+		self.sync(booking, 1000)
+		(row,) = booking["payments"]
+		self.assertEqual((row.amount, row.currency, row.date_source), (1000, "USD", "Excel"))
+		self.assertEqual(row.idempotency_key, "UMRE-EXCEL::TUR-1::U-1")
+		self.assertTrue(svc._excel_payment_in_sync(booking, 1000))
+		self.assertFalse(svc._excel_payment_in_sync(booking, 1200))
+
+	def test_reimport_updates_the_same_row_and_keeps_manual_rows(self) -> None:
+		manual = {"amount": 50, "idempotency_key": None}
+		booking = self.booking({"amount": 1000, "idempotency_key": "UMRE-EXCEL::TUR-1::U-1"}, manual)
+		self.sync(booking, 1200)
+		self.assertEqual([p.amount for p in booking["payments"]], [1200, 50])
+
+	def test_zero_paid_removes_the_excel_row(self) -> None:
+		booking = self.booking({"amount": 1000, "idempotency_key": "UMRE-EXCEL::TUR-1::U-1"})
+		self.sync(booking, 0)
+		self.assertEqual(booking["payments"], [])
+		self.assertTrue(svc._excel_payment_in_sync(booking, 0))

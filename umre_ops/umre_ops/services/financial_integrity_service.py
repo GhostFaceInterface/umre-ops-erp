@@ -12,7 +12,6 @@ Checks per tour:
        (when an Excel truth file is registered for the tour).
     2. No non-UMRECI booking has `ucret > 0`.
     3. No UMRECI booking has `ucret == 0`.
-    4. Every booking in the tour has `locked_financials = 1`.
     4b. Required cost types present; 4c component totals; 4d `Tour Diyanet Card Rule`
         tutar vs per-booking DIYANET (UMRECI) when the rule amount is positive.
     5. Per-TC join: ERP `statu`, `ucret`, `manual_cost` match Excel truth row
@@ -76,7 +75,7 @@ def validate_financial_integrity(
 	bookings = frappe.db.sql(
 		"""
 		SELECT b.name, b.statu, b.ucret, b.manual_cost, b.cost_policy, b.yolcu_tipi,
-		       b.locked_financials, b.is_imported, u.tc_kimlik AS tc
+		       b.is_imported, u.tc_kimlik AS tc
 		FROM `tabUmre Booking` b
 		LEFT JOIN `tabUmreci` u ON u.name = b.umreci
 		WHERE b.tur = %s AND IFNULL(b.iptal_edildi, 0) = 0
@@ -122,15 +121,6 @@ def validate_financial_integrity(
 	}
 	if bad_zero:
 		report["violations"].append("umreci_with_ucret_eq_0")
-
-	# 4 — All bookings must be locked.
-	unlocked = [b for b in bookings if not b["locked_financials"]]
-	report["checks"]["unlocked_bookings"] = {
-		"violations": len(unlocked),
-		"rows": [{"booking": b["name"], "tc": b["tc"], "statu": b["statu"]} for b in unlocked[:50]],
-	}
-	if unlocked:
-		report["violations"].append("unlocked_bookings")
 
 	# 4b — Cost-engine integrity: every booking must carry its required system types
 	# (MEAL/OTHER only when the corresponding domain rule exists for that tour).

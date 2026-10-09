@@ -53,7 +53,7 @@ def _participant_rows(tour: str) -> list[dict]:
 		SELECT
 			b.name AS booking, b.umreci, b.statu, b.oda_tipi,
 			b.ic_hat_baglanti, b.arrival_city, b.return_city, b.kimden_geldi,
-			b.ucret, b.odenen,
+			b.ucret, b.kms, b.odenen,
 			u.ad, u.soyad, u.telefon_numarasi, u.tc_kimlik
 		FROM `tabUmre Booking` b
 		JOIN `tabUmreci` u ON u.name = b.umreci
@@ -67,7 +67,8 @@ def _participant_rows(tour: str) -> list[dict]:
 		row["masked_identity"] = _mask_identity(row.pop("tc_kimlik", None))
 		row["ucret"] = flt(row.get("ucret"))
 		row["odenen"] = flt(row.get("odenen"))
-		row["bakiye"] = flt(row["ucret"] - row["odenen"])
+		row["kms"] = flt(row.get("kms"))
+		row["bakiye"] = flt(row["ucret"] - row["kms"] - row["odenen"])
 	return rows
 
 

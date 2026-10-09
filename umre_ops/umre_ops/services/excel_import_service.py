@@ -16,7 +16,7 @@ from uuid import uuid4
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt, getdate, now
+from frappe.utils import cint, flt, getdate, now, nowdate
 from frappe.utils.background_jobs import is_job_enqueued
 from openpyxl import load_workbook
 
@@ -616,7 +616,60 @@ def _booking_matches(booking, normalized: dict[str, Any], referral: str | None) 
 				return False
 		elif (left or "") != (right or ""):
 			return False
-	return (booking.get("kimden_geldi") or "") == (referral or "")
+	if (booking.get("kimden_geldi") or "") != (referral or ""):
+		return False
+	return _excel_payment_in_sync(booking, normalized["bildirilen_odenen"])
+
+
+def _excel_payment_key(booking) -> str:
+	return f"UMRE-EXCEL::{booking.tur}::{booking.umreci}"
+
+
+def _excel_payment_row(booking):
+	key = _excel_payment_key(booking)
+	return next((row for row in booking.get("payments") or [] if row.get("idempotency_key") == key), None)
+
+
+def _excel_payment_in_sync(booking, amount: float) -> bool:
+	row = _excel_payment_row(booking)
+	if not flt(amount):
+		return row is None
+	return row is not None and abs(flt(row.amount) - flt(amount)) <= 0.000001
+
+
+def _sync_excel_payment(booking, amount: float, import_name: str, row_number: int) -> None:
+	"""ÖDEDİĞİ MİKTAR is the passenger's collected total: keep one Excel payment row equal to it.
+
+	Payment rows typed by hand are never touched. `odenen` follows the rows on save.
+	"""
+	amount = flt(amount)
+	row = _excel_payment_row(booking)
+	if row is not None and (row.get("payment_entry") or row.get("journal_entry") or row.get("posting_status") == "Posted"):
+		if abs(flt(row.amount) - amount) > 0.000001:
+			frappe.throw(_("Muhasebeleştirilmiş Excel ödemesi değiştirilemez: {0}").format(booking.name))
+		return
+	if not amount:
+		if row is not None:
+			booking.remove(row)
+		return
+	remarks = f"Excel import {import_name} satır {row_number}"
+	if row is not None:
+		if abs(flt(row.amount) - amount) > 0.000001:
+			row.amount = amount
+			row.external_reference = import_name
+			row.remarks = remarks
+		return
+	booking.append("payments", {
+		"posting_date": nowdate(),
+		"amount": amount,
+		"currency": frappe.db.get_value("Umre Tour", booking.tur, "para_birimi") or "USD",
+		"date_source": "Excel",
+		"date_verification_status": "Needs Review",
+		"external_reference": import_name,
+		"idempotency_key": _excel_payment_key(booking),
+		"posting_status": "Draft",
+		"remarks": remarks,
+	})
 
 
 def _umreci_matches(umreci, normalized: dict[str, Any]) -> bool:
@@ -722,19 +775,8 @@ def _resolved_referral(import_doc, normalized: dict[str, Any]) -> str | None:
 
 
 def _booking_update_is_accounting_blocked(booking) -> bool:
-	"""Never mutate a snapshot already consumed by accounting or an actual payment."""
-	if cost_engine._has_submitted_cost_posting(booking.name):
-		return True
-	if flt(booking.get("odenen") or 0) > 0:
-		return True
-	return bool(frappe.db.exists(
-		"Umre Booking Payment",
-		{
-			"parent": booking.name,
-			"parenttype": DOCTYPE_BOOKING,
-			"parentfield": "payments",
-		},
-	))
+	"""Only a cost snapshot already posted to the ledger is protected from re-import."""
+	return cost_engine._has_submitted_cost_posting(booking.name)
 
 
 def _company_from_settings() -> str:
@@ -766,7 +808,6 @@ def _apply_booking_fields(booking, normalized: dict[str, Any], referral: str | N
 		"cost_policy_version": "1",
 		"import_row_key": _row_key(booking.tur, normalized),
 		"is_imported": 1,
-		"locked_financials": 1,
 	})
 
 
@@ -888,8 +929,7 @@ def _process_row(
 					staged = _stage_row(
 						import_doc, row_number, raw, normalized, "Blocked Accounting",
 						_(
-							"Muhasebeleştirilmiş maliyet veya gerçekleşmiş ödeme nedeniyle "
-							"otomatik güncelleme engellendi."
+							"Muhasebeleştirilmiş maliyet nedeniyle otomatik güncelleme engellendi."
 						),
 						referral,
 					)
@@ -942,7 +982,7 @@ def _process_row(
 				frappe.throw(company_message)
 			if _booking_update_is_accounting_blocked(booking):
 				frappe.throw(
-					_("Muhasebeleştirilmiş veya ödeme alınmış rezervasyon güncellenemez: {0}").format(
+					_("Maliyeti muhasebeleştirilmiş rezervasyon güncellenemez: {0}").format(
 						booking.name
 					)
 				)
@@ -960,7 +1000,7 @@ def _process_row(
 			summary.created_umreci += 1
 		if existing_booking:
 			_apply_booking_fields(booking, normalized, referral)
-			booking.flags.ignore_financial_lock = True
+			_sync_excel_payment(booking, normalized["bildirilen_odenen"], import_doc.name, row_number)
 			# Recomputed explicitly below (always, even when only `ucret` changed).
 			booking.flags.skip_cost_recompute = True
 			booking.save()
@@ -992,9 +1032,9 @@ def _process_row(
 				"cost_policy_version": "1",
 				"import_row_key": _row_key(import_doc.target_tour, normalized),
 				"is_imported": 1,
-				"locked_financials": 1,
 			}
 		)
+		_sync_excel_payment(booking, normalized["bildirilen_odenen"], import_doc.name, row_number)
 		booking.insert()
 		summary.created_bookings += 1
 		staged = _stage_row(import_doc, row_number, raw, normalized, "Imported", referral=referral)

@@ -13,7 +13,7 @@ from umre_ops.umre_ops.services.accounting_service import (
 	_require_posting_date,
 	post_booking_receipt_journal_entry,
 )
-from umre_ops.umre_ops.services.excel_import_service import _booking_payload, _upsert_payment_row
+from umre_ops.umre_ops.services.excel_import_service import _sync_excel_payment
 from umre_ops.umre_ops.services.idempotency_service import IdempotencyResult, sha256_hex, stable_json_dumps
 from umre_ops.umre_ops.services.payment_service import add_payment_row, post_payment_row_receipt
 
@@ -201,54 +201,7 @@ class TestReleaseOneAccountingSafety(TestCase):
 		ensure_event.assert_not_called()
 
 
-class TestReleaseOneExcelDateSafety(TestCase):
-	@patch("umre_ops.umre_ops.services.excel_import_service._get_or_create_referral", return_value=None)
-	def test_booking_dates_do_not_come_from_birth_date(self, _referral: Mock) -> None:
-		row = {
-			"DOĞUM TARİHİ": "1980-01-01",
-			"KAYIT TARİHİ": "2026-07-20",
-			"ODA SAYISI": "2",
-			"İÇ HAT BAĞLANTI": "İstanbul",
-			"KİMDEN": "",
-			"ÖDENEN": 100,
-			"KMS": 0,
-			"ÜCRET": 100,
-			"AÇIKLAMA": "",
-		}
-
-		payload = _booking_payload(row, "UMRECI-1", "TOUR-1", dry_run=True)
-
-		self.assertEqual(payload["kayit_tarihi"], "2026-07-20")
-		self.assertNotIn("odenen", payload)
-
-	@patch("umre_ops.umre_ops.services.excel_import_service.frappe.throw", side_effect=ValueError)
-	@patch("umre_ops.umre_ops.services.excel_import_service._", side_effect=lambda message: message)
-	def test_missing_payment_date_rejects_before_existing_payment_changes(self, _translate: Mock, _throw: Mock) -> None:
-		payment = SimpleNamespace(
-			idempotency_key="UMRE-EXCEL::TOUR-1::UMRECI-1",
-			amount=25,
-			posting_date="2026-01-01",
-			posting_status="Draft",
-			payment_entry=None,
-			journal_entry=None,
-		)
-		booking = SimpleNamespace(
-			tur="TOUR-1",
-			umreci="UMRECI-1",
-			get=lambda _field: [payment],
-		)
-
-		with self.assertRaises(ValueError):
-			_upsert_payment_row(
-				booking,
-				{"ÖDENEN": 100, "ÖDEME TARİHİ": None},
-				"IMPORT-1",
-				2,
-			)
-
-		self.assertEqual(payment.amount, 25)
-		self.assertEqual(payment.posting_date, "2026-01-01")
-
+class TestReleaseOneExcelPaymentSafety(TestCase):
 	@patch("umre_ops.umre_ops.services.excel_import_service.frappe.throw", side_effect=ValueError)
 	@patch("umre_ops.umre_ops.services.excel_import_service._", side_effect=lambda message: message)
 	def test_posted_payment_cannot_be_changed_by_import(self, _translate: Mock, _throw: Mock) -> None:
@@ -260,15 +213,13 @@ class TestReleaseOneExcelDateSafety(TestCase):
 			payment_entry="ACC-PAY-1",
 			journal_entry=None,
 		)
-		booking = SimpleNamespace(tur="TOUR-1", umreci="UMRECI-1", get=lambda _field: [payment])
+		payment.get = lambda field, default=None: getattr(payment, field, default)
+		booking = SimpleNamespace(
+			name="UMB-1", tur="TOUR-1", umreci="UMRECI-1", get=lambda _field, _default=None: [payment]
+		)
 
 		with self.assertRaises(ValueError):
-			_upsert_payment_row(
-				booking,
-				{"ÖDENEN": 100, "ÖDEME TARİHİ": "2026-07-29"},
-				"IMPORT-1",
-				2,
-			)
+			_sync_excel_payment(booking, 100, "IMPORT-1", 2)
 
 		self.assertEqual(payment.amount, 25)
 		self.assertEqual(payment.posting_date, "2026-01-01")

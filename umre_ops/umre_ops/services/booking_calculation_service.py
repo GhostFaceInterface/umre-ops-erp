@@ -5,8 +5,8 @@ Read-only financial view for `Umre Booking`.
 
 DESIGN INTENT
 -------------
-The booking is the *imported truth*. Its financial inputs (`statu`, `ucret`,
-`kms`, `manual_cost`) are locked after import (`Umre Booking.locked_financials`).
+The booking's financial inputs (`statu`, `ucret`, `kms`, `manual_cost`) come
+from the Excel import and may be corrected in the form.
 
 This service NEVER writes financial fields. It only:
   - sets `vize_tipi` to its UI default if missing;
