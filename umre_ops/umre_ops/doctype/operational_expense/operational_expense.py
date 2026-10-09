@@ -8,7 +8,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt
 
-from umre_ops.umre_ops.services.fx_service import fill_rate
+from umre_ops.umre_ops.services.fx_service import SOURCE_MANUAL, fill_rate
 from umre_ops.umre_ops.services.season_service import apply_active_season
 
 
@@ -41,8 +41,9 @@ class OperationalExpense(Document):
 			"Umre Money Account", self.money_account, ["currency", "institution"]
 		) or (None, None)
 		if cur and cur != self.currency:
+			previous_currency = self.currency
 			self.currency = cur
-			if not self.has_value_changed("usd_exchange_rate") or self.is_new():
+			if previous_currency and (self.is_new() or not self.has_value_changed("usd_exchange_rate")):
 				# A rate typed for the previous currency is meaningless now.
 				self.usd_exchange_rate = 0
 		if institution:
@@ -104,6 +105,14 @@ class OperationalExpense(Document):
 		unchanged = not self.is_new() and not any(
 			self.has_value_changed(f) for f in ("amount", "currency", "usd_exchange_rate", "expense_date")
 		)
+		if (
+			not self.is_new()
+			and self.has_value_changed("expense_date")
+			and not self.has_value_changed("usd_exchange_rate")
+			and self.get("kur_kaynagi") != SOURCE_MANUAL
+		):
+			# An automatic rate follows the expense date.
+			self.usd_exchange_rate = 0
 		if not (unchanged and flt(self.usd_exchange_rate) > 0):
 			fill_rate(self, currency=cur, rate_field="usd_exchange_rate", on_date=self.expense_date)
 		self.usd_amount = flt(amt / flt(self.usd_exchange_rate), 2)

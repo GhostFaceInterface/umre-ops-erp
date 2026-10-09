@@ -12,9 +12,9 @@ Sources, in order (all built into ERPNext):
    installer. The table is read directly because ERPNext's pegged shortcut in
    ``get_exchange_rate`` returns the ratio for both directions.
 2. ``Currency Exchange`` records (USD → currency) dated on or shortly before the day.
-3. ``erpnext.setup.utils.get_exchange_rate`` — the free frankfurter.dev (ECB)
-   service configured in ``Currency Exchange Settings``. A fetched rate is
-   stored as a ``Currency Exchange`` record so it stays auditable offline.
+3. The rate service configured in ``Currency Exchange Settings`` (free
+   frankfurter.dev / ECB by default), called directly. A fetched rate is stored
+   as a ``Currency Exchange`` record so it stays auditable offline.
 """
 from __future__ import annotations
 
@@ -81,9 +81,26 @@ def _store_rate(currency: str, on_date, rate: float) -> None:
 
 
 def _fetch_rate(currency: str, on_date) -> float | None:
-	from erpnext.setup.utils import get_exchange_rate
+	"""Call the rate service configured in ERPNext `Currency Exchange Settings` directly.
 
-	return flt(get_exchange_rate(BASE_CURRENCY, currency, str(on_date))) or None
+	``erpnext.setup.utils.get_exchange_rate`` is not used: with the default
+	``allow_stale = 1`` it returns the newest stored Currency Exchange record, so a
+	rate stored once would be returned (and re-stored) forever.
+	"""
+	import requests
+	from erpnext.setup.utils import format_ces_api
+
+	settings = frappe.get_cached_doc("Currency Exchange Settings")
+	if settings.get("disabled") or not settings.get("api_endpoint"):
+		return None
+	args = {"transaction_date": str(on_date), "from_currency": BASE_CURRENCY, "to_currency": currency}
+	params = {row.key: format_ces_api(row.value, args) for row in settings.get("req_params") or []}
+	response = requests.get(format_ces_api(settings.api_endpoint, args), params=params, timeout=10)
+	response.raise_for_status()
+	value = response.json()
+	for row in settings.get("result_key") or []:
+		value = value[format_ces_api(str(row.key), args)]
+	return flt(value) or None
 
 
 def _check_sar(rate: float) -> float:

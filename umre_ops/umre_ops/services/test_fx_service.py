@@ -1,6 +1,7 @@
 from datetime import date
+from types import SimpleNamespace
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import frappe
 
@@ -86,3 +87,27 @@ class TestValidateRate(TestCase):
 	def test_manual_rate_without_reference_is_kept(self) -> None:
 		with patch.object(fx_service, "usd_rate", side_effect=frappe.ValidationError):
 			self.assertEqual(fx_service.validate_rate("TRY", 40.0, ON), fx_service.SOURCE_MANUAL)
+
+
+class TestFetchRate(TestCase):
+	def test_calls_configured_service_not_stored_records(self) -> None:
+		settings = SimpleNamespace(
+			api_endpoint="https://api.frankfurter.dev/v1/{transaction_date}",
+			req_params=[SimpleNamespace(key="base", value="{from_currency}"), SimpleNamespace(key="symbols", value="{to_currency}")],
+			result_key=[SimpleNamespace(key="rates"), SimpleNamespace(key="{to_currency}")],
+			get=lambda key, default=None: getattr(settings, key, default),
+			disabled=0,
+		)
+		response = MagicMock()
+		response.json.return_value = {"rates": {"TRY": 41.2}}
+		requests = MagicMock()
+		requests.get.return_value = response
+		erpnext_utils = SimpleNamespace(format_ces_api=lambda data, args: data.format(**args))
+		with (
+			patch.dict("sys.modules", {"requests": requests, "erpnext.setup.utils": erpnext_utils}),
+			patch.object(fx_service.frappe, "get_cached_doc", return_value=settings, create=True),
+		):
+			self.assertEqual(fx_service._fetch_rate("TRY", ON), 41.2)
+		url = requests.get.call_args.args[0]
+		self.assertEqual(url, "https://api.frankfurter.dev/v1/2026-03-01")
+		self.assertEqual(requests.get.call_args.kwargs["params"], {"base": "USD", "symbols": "TRY"})

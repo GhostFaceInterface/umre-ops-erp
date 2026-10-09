@@ -1,5 +1,7 @@
+from enum import Enum
 from types import SimpleNamespace
 from unittest import TestCase
+from unittest.mock import patch
 
 from umre_ops.umre_ops.services import cost_engine
 from umre_ops.umre_ops.services.cost_engine import TourCostContext, compute_cost_lines, summarize_lines
@@ -127,3 +129,28 @@ class TestCostLines(TestCase):
 		self.assertFalse(fresh["stale"])
 		stale = cost_engine.diff_components(booking(yolcu_tipi="Bebek"), ctx, {"HOTEL": 266.67, "FLIGHT": 700.0, "VISA": 150.0, "DIYANET": 40.0})
 		self.assertTrue(stale["stale"])
+
+
+class FakeJobStatus(str, Enum):  # noqa: UP042 — mirrors rq.job.JobStatus
+	QUEUED = "queued"
+	STARTED = "started"
+
+
+class TestRecomputeScheduling(TestCase):
+	def _enqueue_job_id(self, status) -> str:
+		with (
+			patch("frappe.utils.background_jobs.get_job_status", return_value=status),
+			patch.object(cost_engine.frappe, "enqueue") as enqueue,
+		):
+			cost_engine.schedule_recompute_for_tour("TUR-1")
+		kwargs = enqueue.call_args.kwargs
+		self.assertTrue(kwargs["deduplicate"])
+		self.assertEqual(kwargs["queue"], "long")
+		return kwargs["job_id"]
+
+	def test_running_job_gets_a_follow_up(self) -> None:
+		self.assertEqual(self._enqueue_job_id(FakeJobStatus.STARTED), "umre_recompute_tour::TUR-1::followup")
+
+	def test_queued_or_missing_job_is_deduplicated(self) -> None:
+		self.assertEqual(self._enqueue_job_id(FakeJobStatus.QUEUED), "umre_recompute_tour::TUR-1")
+		self.assertEqual(self._enqueue_job_id(None), "umre_recompute_tour::TUR-1")

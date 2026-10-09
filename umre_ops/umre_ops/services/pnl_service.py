@@ -17,7 +17,8 @@ Per tour (cancelled bookings and tours with ``durum = İptal`` are excluded):
 
 Season:
 
-    genel gider       = Σ Operational Expense.usd_amount (Confirmed, no related_tour)
+    genel gider       = Σ Operational Expense.usd_amount (Confirmed, no related_tour,
+                        or related_tour is a cancelled tour — a real cost with no tour profit)
     sezon sonucu      = Σ tur kârı − genel gider
 
 Collections are per booking: açık alacak = max(ucret − odenen, 0); an
@@ -308,8 +309,11 @@ def _overhead(season: str) -> float:
 		SELECT COALESCE(SUM(usd_amount), 0)
 		FROM `tabOperational Expense`
 		WHERE status = 'Confirmed' AND season = %(season)s
-		  AND COALESCE(related_tour, '') = ''
+		  AND (
+		    COALESCE(related_tour, '') = ''
+		    OR related_tour IN (SELECT name FROM `tabUmre Tour` WHERE durum = %(cancelled)s)
+		  )
 		""",
-		{"season": season},
+		{"season": season, "cancelled": CANCELLED_TOUR_STATUS},
 	)
 	return flt(row[0][0] if row else 0, 2)

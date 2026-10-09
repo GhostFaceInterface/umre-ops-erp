@@ -569,7 +569,9 @@ def schedule_recompute_for_tour(tour: str | None) -> None:
 	try:
 		from frappe.utils.background_jobs import get_job_status
 
-		if str(get_job_status(job_id) or "") == "started":
+		status = get_job_status(job_id)
+		# rq JobStatus is a str Enum: compare its value, not str(status).
+		if getattr(status, "value", status) == "started":
 			job_id = f"{job_id}::followup"
 	except Exception:
 		frappe.log_error(title=f"recompute job status check failed: {tour}")
@@ -618,7 +620,7 @@ def recompute_tour_bookings(tour: str) -> dict:
 				continue
 			recompute_components(name, skip_dashboard_publish=True, ctx=ctx)
 			frappe.db.commit()
-		except Exception as exc:  # noqa: BLE001 — tour batch: collect and continue
+		except Exception as exc:  # tour batch: collect and continue
 			frappe.db.rollback()
 			errors.append({"booking": name, "error": str(exc)})
 			frappe.log_error(

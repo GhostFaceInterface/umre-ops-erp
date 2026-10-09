@@ -79,7 +79,7 @@ def validate_financial_integrity(
 		       b.locked_financials, b.is_imported, u.tc_kimlik AS tc
 		FROM `tabUmre Booking` b
 		LEFT JOIN `tabUmreci` u ON u.name = b.umreci
-		WHERE b.tur = %s
+		WHERE b.tur = %s AND IFNULL(b.iptal_edildi, 0) = 0
 		""",
 		(tour,),
 		as_dict=True,

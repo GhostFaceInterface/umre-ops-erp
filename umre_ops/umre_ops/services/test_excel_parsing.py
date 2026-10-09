@@ -51,6 +51,11 @@ class TestSafeFloat(TestCase):
 		self.assertEqual(svc.safe_float(1500.0), 1500.0)
 		self.assertEqual(svc.safe_float(""), 0)
 
+	def test_numeric_cells_are_never_reparsed_as_text(self) -> None:
+		self.assertEqual(svc.safe_float(333.333), 333.333)
+		self.assertEqual(svc.safe_float(12.375), 12.375)
+		self.assertEqual(svc.safe_float(1300), 1300.0)
+
 	def test_invalid_values(self) -> None:
 		for invalid in ("ücretsiz", "1.2.3", True):
 			with self.assertRaises(frappe.ValidationError):
@@ -119,6 +124,13 @@ class TestIdentity(TestCase):
 		normalized = svc._normalize_row(valid_row(), "TUR-1")
 		umreci = {"ad": "Ayşe", "soyad": "Veli", "dogum_tarihi": "1975-01-01"}
 		self.assertIn("AD", svc._identity_conflict(umreci, normalized))
+
+	def test_month_first_legacy_birth_date_is_not_a_conflict(self) -> None:
+		normalized = svc._normalize_row(valid_row(**{"DOĞUM TARİHİ": "03.04.1980"}), "TUR-1")
+		legacy = {"ad": "Ali", "soyad": "Veli", "dogum_tarihi": "1980-03-04"}
+		self.assertIsNone(svc._identity_conflict(legacy, normalized))
+		other = {"ad": "Ali", "soyad": "Veli", "dogum_tarihi": "1980-05-04"}
+		self.assertIn("DOĞUM TARİHİ", svc._identity_conflict(other, normalized))
 
 	def test_empty_phone_does_not_clear_stored_phone(self) -> None:
 		normalized = svc._normalize_row(valid_row(**{"TELEFON NUMARASI": ""}), "TUR-1")

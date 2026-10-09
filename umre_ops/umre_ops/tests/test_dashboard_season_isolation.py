@@ -116,6 +116,9 @@ class TestExpenseScope(TestCase):
 		where, params = expense_service._where_clause({"season": "1448"})
 		self.assertIn("COALESCE(oe.related_tour, '') = ''", where)
 		self.assertNotIn("tour", params)
+		# Expenses of a cancelled tour are real costs without a tour profit: overhead.
+		self.assertIn("durum = %(cancelled_tour_status)s", where)
+		self.assertEqual(params["cancelled_tour_status"], "İptal")
 
 	def test_tour_filter_selects_that_tours_extras(self) -> None:
 		where, params = expense_service._where_clause({"season": "1448", "tour": "TOUR-1"})

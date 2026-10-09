@@ -31,8 +31,11 @@ INDENT_DETAIL = 2
 
 def execute(filters=None):
 	filters = frappe._dict(filters or {})
+	from umre_ops.umre_ops.services.dashboard_service import _company_context
+
 	season = filters.get("season") or get_active_season(required=True)
-	pnl = get_season_pnl(season, filters.get("tour") or None)
+	# Same company scope as the dashboard so both show the same numbers.
+	pnl = get_season_pnl(season, filters.get("tour") or None, _company_context())
 	data = get_data(pnl)
 	return get_columns(), data, _warnings_message(pnl), get_chart(pnl), get_report_summary(pnl)
 

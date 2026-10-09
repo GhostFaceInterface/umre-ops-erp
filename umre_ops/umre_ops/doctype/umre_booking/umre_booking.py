@@ -76,6 +76,9 @@ class UmreBooking(Document):
 
 	def _validate_commission(self) -> None:
 		"""KMS is the agent commission included in `ucret`; net sale = ucret − kms."""
+		# Only checked when entered or changed, so legacy rows stay saveable.
+		if not self.is_new() and not any(self.has_value_changed(f) for f in ("kms", "statu", "ucret")):
+			return
 		kms = flt(self.get("kms") or 0)
 		if kms < 0:
 			frappe.throw(_("KMS (komisyon) negatif olamaz."))
@@ -225,10 +228,14 @@ class UmreBooking(Document):
 		persisted = self._persisted_payment_rows()
 		total = 0.0
 		for row in rows:
-			if not row.get("currency"):
-				row.currency = tour_currency
 			old = persisted.get(row.name) if row.name else None
-			edited = old is None or flt(old.amount) != flt(row.amount) or old.currency != row.currency
+			edited = (
+				old is None
+				or flt(old.amount) != flt(row.amount)
+				or (old.currency or tour_currency) != (row.get("currency") or tour_currency)
+			)
+			if not row.get("currency") and edited:
+				row.currency = tour_currency
 			if edited and flt(row.amount) <= 0:
 				frappe.throw(_("Ödeme satırı tutarı sıfırdan büyük olmalıdır (satır {0}).").format(row.idx))
 			if edited and row.currency != tour_currency:
@@ -237,8 +244,10 @@ class UmreBooking(Document):
 						tour_currency, row.idx
 					)
 				)
-			if row.get("posting_status") in PAYMENT_STATUSES_NOT_COLLECTED or row.currency != tour_currency:
+			if row.get("posting_status") in PAYMENT_STATUSES_NOT_COLLECTED:
 				continue
+			# Unedited legacy rows in another currency keep their old contribution so a
+			# non-financial save never changes `odenen`; diagnostics list them for review.
 			total += flt(row.amount)
 		self.odenen = flt(total)
 

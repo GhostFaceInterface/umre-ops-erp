@@ -233,6 +233,9 @@ def safe_float(value: Any) -> float:
 		return 0.0
 	if isinstance(value, bool):
 		frappe.throw(_("Sayısal değer geçersiz: {0}").format(repr(value)))
+	# Numeric cells arrive as numbers: never re-parse them as text ("333.333" is not 333333).
+	if isinstance(value, int | float | Decimal):
+		return float(value)
 	text = re.sub(r"[\s\u00a0]", "", preserve_excel_text(value))
 	# A separator followed by groups of exactly three digits is a thousands
 	# separator ("1.500" / "1,500" -> 1500); otherwise it is the decimal mark.
@@ -631,6 +634,17 @@ def _umreci_matches(umreci, normalized: dict[str, Any]) -> bool:
 	)
 
 
+def _day_month_swapped(stored: Any, imported: str | None) -> bool:
+	"""Text dates used to be read month first; 1980-03-04 vs 1980-04-03 is the same person."""
+	if not (stored and imported):
+		return False
+	try:
+		a, b = getdate(stored), getdate(imported)
+	except Exception:
+		return False
+	return a.year == b.year and a.month == b.day and a.day == b.month
+
+
 def _identity_conflict(umreci, normalized: dict[str, Any]) -> str | None:
 	"""Same TC but a different person: never overwrite silently."""
 	differs = [
@@ -638,7 +652,10 @@ def _identity_conflict(umreci, normalized: dict[str, Any]) -> str | None:
 		for label, field in (("AD", "ad"), ("SOYAD", "soyad"))
 		if header_key(umreci.get(field)) != header_key(normalized[field])
 	]
-	if str(umreci.get("dogum_tarihi") or "") != str(normalized.get("dogum_tarihi") or ""):
+	stored_birth, imported_birth = umreci.get("dogum_tarihi"), normalized.get("dogum_tarihi")
+	if str(stored_birth or "") != str(imported_birth or "") and not _day_month_swapped(
+		stored_birth, imported_birth
+	):
 		differs.append("DOĞUM TARİHİ")
 	if not differs:
 		return None
@@ -1045,6 +1062,9 @@ def run_import(docname: str, *, dry_run: bool) -> dict:
 		frappe.throw(_("Bu durumda kuru çalıştırma yapılamaz."))
 	if not frappe.db.exists("Umre Tour", import_doc.target_tour):
 		frappe.throw(_("Hedef tur bulunamadı."))
+	tour_status = frappe.db.get_value("Umre Tour", import_doc.target_tour, "durum")
+	if tour_status in {"İptal", "Kapandı"}:
+		frappe.throw(_("{0} durumundaki tura aktarım yapılamaz.").format(tour_status))
 	content = _get_file_content(import_doc)
 	rows = _read_rows(import_doc, content)
 	if not rows:

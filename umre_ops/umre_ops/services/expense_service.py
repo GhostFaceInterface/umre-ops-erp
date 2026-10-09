@@ -87,7 +87,12 @@ def _scope_condition(filters: dict[str, Any], params: dict[str, Any]) -> str:
 	if filters.get("tour"):
 		params["tour"] = filters["tour"]
 		return "oe.related_tour = %(tour)s"
-	return "COALESCE(oe.related_tour, '') = ''"
+	# Same overhead definition as pnl_service: expenses of cancelled tours stay visible here.
+	params["cancelled_tour_status"] = "İptal"
+	return (
+		"(COALESCE(oe.related_tour, '') = '' OR oe.related_tour IN "
+		"(SELECT name FROM `tabUmre Tour` WHERE durum = %(cancelled_tour_status)s))"
+	)
 
 
 def _where_clause(
