@@ -15,6 +15,7 @@ def recalculate_all_bookings(limit: int = 0) -> dict:
 	Recompute derived amounts on existing `Umre Booking` documents.
 	Safe to re-run. Does not post accounting entries.
 	"""
+	frappe.only_for("System Manager")
 	limit = int(limit or 0)
 	names = frappe.get_all("Umre Booking", pluck="name", limit=limit or None, order_by="modified asc")
 	updated = 0
@@ -35,6 +36,7 @@ def post_all_unposted_payments(paid_account: str, dry_run: int = 1, limit: int =
 	- Only posts child rows where `posting_status` is Draft/empty and amount != 0.
 	- Idempotent (Posting Event + downstream unique keys).
 	"""
+	frappe.only_for("System Manager")
 	dry_run = bool(int(dry_run))
 	limit = int(limit or 0)
 

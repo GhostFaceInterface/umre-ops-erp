@@ -1,9 +1,8 @@
 name: Deploy Umre Ops to VPS
 
+# VPS artık kullanılmıyor: otomatik push tetikleyicisi kapatıldı, yalnızca elle çalıştırılabilir.
 on:
-  push:
-    branches:
-      - version-16  # Her version-16 branch push veya merge işleminde dağıtımı başlatır
+  workflow_dispatch:
 
 jobs:
   deploy:

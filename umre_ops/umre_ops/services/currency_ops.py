@@ -61,6 +61,7 @@ def set_company_default_currency_usd(
 	"""Set `default_currency` on Company row(s) to USD."""
 	updated: list[str] = []
 	skipped: list[str] = []
+	blocked: list[str] = []
 	if all_companies:
 		names = frappe.get_all("Company", pluck="name") or []
 	else:
@@ -70,6 +71,10 @@ def set_company_default_currency_usd(
 		if not name:
 			continue
 		cur = frappe.db.get_value("Company", name, "default_currency") or ""
+		if (cur or "").upper() != OPERATIONAL_CURRENCY and _has_gl_entries(company=name):
+			# Changing the base currency of a company with ledger entries corrupts its books.
+			blocked.append(name)
+			continue
 		if (cur or "").upper() != OPERATIONAL_CURRENCY:
 			frappe.db.set_value(
 				"Company", name, "default_currency", OPERATIONAL_CURRENCY, update_modified=False
@@ -77,7 +82,12 @@ def set_company_default_currency_usd(
 			updated.append(name)
 		else:
 			skipped.append(name)
-	return {"updated": updated, "unchanged": skipped}
+	return {"updated": updated, "unchanged": skipped, "blocked_has_gl_entries": blocked}
+
+
+def _has_gl_entries(*, company: str | None = None, account: str | None = None) -> bool:
+	filters = {"company": company} if company else {"account": account}
+	return bool(frappe.db.exists("GL Entry", filters))
 
 
 @frappe.whitelist()
@@ -185,6 +195,10 @@ def bulk_fix_account_currency(company: str | None = None) -> dict[str, Any]:
 		at = (row.account_type or "").strip()
 		if at in _PROTECTED_ACCOUNT_TYPES_FOR_CURRENCY:
 			skipped.append({"name": row.name, "reason": "protected_account_type", "detail": at})
+			continue
+
+		if _has_gl_entries(account=row.name):
+			skipped.append({"name": row.name, "reason": "has_gl_entries"})
 			continue
 
 		ac_raw = row.account_currency

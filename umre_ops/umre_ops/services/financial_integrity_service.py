@@ -19,7 +19,7 @@ Checks per tour:
        for the same TC (when truth file is provided).
 
 Public surface:
-    validate_financial_integrity(tour, raise_on_fail=True, excel_truth_path=None)
+    validate_financial_integrity(tour, raise_on_fail=True)
         -> dict report
 
 The function is whitelisted for desk/admin invocation.
@@ -34,32 +34,29 @@ from frappe import _
 from frappe.utils import flt
 
 PAYING_STATUS = "UMRECI"
-TRUTH_DIR = Path(__file__).resolve().parent.parent / "patches" / "data"
+# Active patch data of the app package (umre_ops/patches/data).
+TRUTH_DIR = Path(__file__).resolve().parents[2] / "patches" / "data"
 
 
-def _load_truth(excel_truth_path: str | None, tour: str) -> dict | None:
-	"""Return the canonical Excel truth for `tour`, or None if unavailable."""
-	if excel_truth_path:
-		p = Path(excel_truth_path)
-	else:
-		# Built-in: registered for known tours under patches/data/excel_truth_*.json
-		# Choose the file whose `tour_pattern` matches `tour`.
-		for candidate in TRUTH_DIR.glob("excel_truth_*.json"):
-			doc = json.loads(candidate.read_text(encoding="utf-8"))
-			pat = (doc.get("tour_pattern") or "").rstrip("%")
-			if pat and tour.startswith(pat):
-				return doc
-		return None
-	if not p.exists():
-		return None
-	return json.loads(p.read_text(encoding="utf-8"))
+def _load_truth(tour: str) -> dict | None:
+	"""Return the bundled Excel truth for `tour`, or None if unavailable.
+
+	Only files shipped in ``patches/data`` are read; callers cannot pass a path.
+	"""
+	# Registered for known tours under patches/data/excel_truth_*.json;
+	# choose the file whose `tour_pattern` matches `tour`.
+	for candidate in TRUTH_DIR.glob("excel_truth_*.json"):
+		doc = json.loads(candidate.read_text(encoding="utf-8"))
+		pat = (doc.get("tour_pattern") or "").rstrip("%")
+		if pat and tour.startswith(pat):
+			return doc
+	return None
 
 
 @frappe.whitelist()
 def validate_financial_integrity(
 	tour: str,
 	raise_on_fail: bool | int | str = True,
-	excel_truth_path: str | None = None,
 ) -> dict:
 	"""Run all five checks against `tour`. Either return a clean report or raise.
 
@@ -67,6 +64,8 @@ def validate_financial_integrity(
 	`raise_on_fail` is truthy and any check failed, raises `frappe.ValidationError`
 	*after* assembling the full report so callers can inspect everything.
 	"""
+	# The report contains identity numbers: administrators only.
+	frappe.only_for("System Manager")
 	if not tour:
 		frappe.throw(_("Argument 'tour' is required."))
 
@@ -210,7 +209,7 @@ def validate_financial_integrity(
 	report["component_cost_total"] = flt(cost_total_components)
 
 	# 1 + 5 — Excel truth checks.
-	truth = _load_truth(excel_truth_path, tour)
+	truth = _load_truth(tour)
 	if truth:
 		exp_total = flt(truth["summary"]["umreci_revenue_total"])
 		exp_count = int(truth["summary"]["umreci_count"])
