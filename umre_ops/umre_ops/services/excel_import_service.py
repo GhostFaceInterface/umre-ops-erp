@@ -44,6 +44,9 @@ IMPORT_FIELDS = (
 	"ÖDEDİĞİ MİKTAR",
 	"YOLCU STATÜSÜ",
 )
+# Optional columns: when not mapped, the value is treated as empty.
+OPTIONAL_IMPORT_FIELDS = ("KMS",)
+ALL_IMPORT_FIELDS = IMPORT_FIELDS + OPTIONAL_IMPORT_FIELDS
 STATUS_ALLOWLIST = {
 	"HOCA",
 	"UMRECI",
@@ -215,8 +218,12 @@ def parse_date(value: Any) -> str | None:
 		return value.date().isoformat()
 	if isinstance(value, date):
 		return value.isoformat()
+	text = preserve_excel_text(value)
 	try:
-		return getdate(value).isoformat()
+		if re.match(r"^\d{4}-\d{1,2}-\d{1,2}", text):
+			return getdate(text[:10]).isoformat()
+		# Turkish spreadsheets write dates day first: 03.04.1980 = 3 April 1980.
+		return getdate(text, parse_day_first=True).isoformat()
 	except Exception:
 		return None
 
@@ -226,12 +233,14 @@ def safe_float(value: Any) -> float:
 		return 0.0
 	if isinstance(value, bool):
 		frappe.throw(_("Sayısal değer geçersiz: {0}").format(repr(value)))
-	text = preserve_excel_text(value)
-	if re.fullmatch(r"-?\d{1,3}(\.\d{3})*,\d+", text):
+	text = re.sub(r"[\s\u00a0]", "", preserve_excel_text(value))
+	# A separator followed by groups of exactly three digits is a thousands
+	# separator ("1.500" / "1,500" -> 1500); otherwise it is the decimal mark.
+	if re.fullmatch(r"-?[1-9]\d{0,2}(\.\d{3})+(,\d+)?", text):
 		text = text.replace(".", "").replace(",", ".")
-	elif re.fullmatch(r"-?\d{1,3}(,\d{3})*\.\d+", text):
+	elif re.fullmatch(r"-?[1-9]\d{0,2}(,\d{3})+(\.\d+)?", text):
 		text = text.replace(",", "")
-	elif re.fullmatch(r"-?\d+(?:,\d+)?", text):
+	elif re.fullmatch(r"-?\d+,\d+", text):
 		text = text.replace(",", ".")
 	elif not re.fullmatch(r"-?\d+(?:\.\d+)?", text):
 		frappe.throw(_("Sayısal değer geçersiz: {0}").format(repr(value)))
@@ -394,7 +403,7 @@ def suggest_column_mappings(headers: list[str]) -> list[dict[str, str]]:
 	header_by_key = {header_key(header): header for header in headers if header}
 	return [
 		{"target_field": target, "source_column": header_by_key.get(header_key(target), "")}
-		for target in IMPORT_FIELDS
+		for target in ALL_IMPORT_FIELDS
 	]
 
 
@@ -411,7 +420,7 @@ def _validated_mapping(import_doc, headers: list[str]) -> dict[str, str]:
 		source = header_by_key.get(header_key(row.source_column))
 		if target in mapping:
 			frappe.throw(_("Aynı hedef alan birden fazla kez eşlenemez: {0}").format(target))
-		if target not in IMPORT_FIELDS or not source:
+		if target not in ALL_IMPORT_FIELDS or not source:
 			frappe.throw(_("Geçersiz kolon eşlemesi: {0} → {1}").format(row.source_column, target))
 		mapping[target] = source
 	missing = [field for field in IMPORT_FIELDS if field not in mapping]
@@ -540,6 +549,7 @@ def _normalize_row(row: dict[str, Any], _tour: str) -> dict[str, Any]:
 		frappe.throw(_("KİMDEN yalnız UMRECI statüsündeki yolcular için zorunludur."))
 	price = safe_float(row["FİYAT"])
 	paid = safe_float(row["ÖDEDİĞİ MİKTAR"])
+	commission = safe_float(row.get("KMS"))
 	if price < 0:
 		frappe.throw(_("FİYAT negatif olamaz."))
 	if status == "UMRECI" and price <= 0:
@@ -550,9 +560,17 @@ def _normalize_row(row: dict[str, Any], _tour: str) -> dict[str, Any]:
 		frappe.throw(_("ÖDEDİĞİ MİKTAR negatif olamaz."))
 	if status != "UMRECI" and paid:
 		frappe.throw(_("Yalnız UMRECI statüsündeki yolcular için ödenen miktar girilebilir."))
+	if commission < 0:
+		frappe.throw(_("KMS negatif olamaz."))
+	if status != "UMRECI" and commission:
+		frappe.throw(_("KMS (komisyon) yalnız UMRECI statüsündeki yolcular için girilebilir."))
+	if commission > price:
+		frappe.throw(_("KMS (komisyon) fiyattan büyük olamaz."))
 	birth = parse_date(row["DOĞUM TARİHİ"])
 	if not birth:
 		frappe.throw(_("DOĞUM TARİHİ geçerli bir tarih olmalıdır."))
+	if not (date(1900, 1, 1) <= getdate(birth) <= getdate()):
+		frappe.throw(_("DOĞUM TARİHİ 1900 ile bugün arasında olmalıdır: {0}").format(birth))
 	ad = preserve_excel_text(row["AD"])
 	soyad = preserve_excel_text(row["SOYAD"])
 	if not ad or not soyad:
@@ -572,21 +590,25 @@ def _normalize_row(row: dict[str, Any], _tour: str) -> dict[str, Any]:
 		"statu": status,
 		"ucret": price,
 		"bildirilen_odenen": paid,
+		"kms": commission,
 		"odenen": 0,
 	}
 
 
 def _row_key(tour: str, normalized: dict[str, Any]) -> str:
 	payload = {key: value for key, value in normalized.items() if key != "referral_text"}
+	# Keys created before the optional KMS column must stay stable.
+	if not payload.get("kms"):
+		payload.pop("kms", None)
 	payload["tour"] = tour
 	return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
 def _booking_matches(booking, normalized: dict[str, Any], referral: str | None) -> bool:
-	fields = ("oda_tipi", "arrival_city", "return_city", "statu", "ucret", "bildirilen_odenen")
+	fields = ("oda_tipi", "arrival_city", "return_city", "statu", "ucret", "bildirilen_odenen", "kms")
 	for field in fields:
 		left, right = booking.get(field), normalized.get(field)
-		if field in {"ucret", "bildirilen_odenen"}:
+		if field in {"ucret", "bildirilen_odenen", "kms"}:
 			if abs(flt(left) - flt(right)) > 0.000001:
 				return False
 		elif (left or "") != (right or ""):
@@ -601,9 +623,29 @@ def _umreci_matches(umreci, normalized: dict[str, Any]) -> bool:
 		and header_key(umreci.get("soyad")) == header_key(normalized["soyad"])
 		and all(
 			str(umreci.get(field) or "") == str(normalized.get(field) or "")
-			for field in ("cinsiyet", "dogum_tarihi", "uyruk", "telefon_numarasi")
+			for field in ("cinsiyet", "dogum_tarihi", "uyruk")
 		)
+		# An empty phone in Excel never clears the stored phone.
+		and (not normalized.get("telefon_numarasi")
+			or str(umreci.get("telefon_numarasi") or "") == str(normalized["telefon_numarasi"]))
 	)
+
+
+def _identity_conflict(umreci, normalized: dict[str, Any]) -> str | None:
+	"""Same TC but a different person: never overwrite silently."""
+	differs = [
+		label
+		for label, field in (("AD", "ad"), ("SOYAD", "soyad"))
+		if header_key(umreci.get(field)) != header_key(normalized[field])
+	]
+	if str(umreci.get("dogum_tarihi") or "") != str(normalized.get("dogum_tarihi") or ""):
+		differs.append("DOĞUM TARİHİ")
+	if not differs:
+		return None
+	return _(
+		"Kimlik çakışması: bu TC sistemde farklı {0} ile kayıtlı. TC'yi kontrol edin veya "
+		"Umreci kaydını elle düzeltin."
+	).format(", ".join(differs))
 
 
 def _stage_row(
@@ -687,6 +729,8 @@ def _company_from_settings() -> str:
 
 def _apply_umreci_fields(umreci, normalized: dict[str, Any]) -> None:
 	for field in ("ad", "soyad", "cinsiyet", "tc_kimlik", "dogum_tarihi", "uyruk", "telefon_numarasi"):
+		if field == "telefon_numarasi" and not normalized[field] and umreci.get(field):
+			continue
 		umreci.set(field, normalized[field])
 
 
@@ -700,6 +744,7 @@ def _apply_booking_fields(booking, normalized: dict[str, Any], referral: str | N
 		"statu": normalized["statu"],
 		"ucret": normalized["ucret"],
 		"bildirilen_odenen": normalized["bildirilen_odenen"],
+		"kms": normalized["kms"],
 		"cost_policy": "System Rules",
 		"cost_policy_version": "1",
 		"import_row_key": _row_key(booking.tur, normalized),
@@ -710,17 +755,50 @@ def _apply_booking_fields(booking, normalized: dict[str, Any], referral: str | N
 
 def _validate_component_inputs_for_import(
 	tour: str, normalized: dict[str, Any], existing_booking=None
-) -> None:
-	"""Exercise cost-rule calculations during preflight without writing documents."""
+) -> list[dict]:
+	"""Run the cost engine during preflight without writing documents; return its issues."""
+	from umre_ops.umre_ops.services.booking_calculation_service import (
+		_age_on_date,
+		passenger_type_for_age,
+	)
+
+	start = frappe.db.get_value("Umre Tour", tour, "baslangic_tarihi")
+	yolcu_tipi = (
+		passenger_type_for_age(_age_on_date(getdate(normalized["dogum_tarihi"]), getdate(start)))
+		if start and normalized.get("dogum_tarihi")
+		else (existing_booking.get("yolcu_tipi") if existing_booking else None)
+	)
 	values = {
 		"tur": tour,
 		"oda_tipi": normalized["oda_tipi"],
 		"statu": normalized["statu"],
 		"cost_policy": "System Rules",
-		"yolcu_tipi": existing_booking.get("yolcu_tipi") if existing_booking else None,
-		"vize_tipi": existing_booking.get("vize_tipi") if existing_booking else None,
+		"yolcu_tipi": yolcu_tipi,
+		"vize_tipi": (existing_booking.get("vize_tipi") if existing_booking else None) or "Umre",
 	}
-	cost_engine.validate_component_inputs(values)
+	return cost_engine.validate_component_inputs(values)
+
+
+ISSUE_TEXT = {
+	"MISSING_RULE": "kural yok",
+	"ZERO_RULE": "kural tutarı 0",
+	"INVALID_RATE": "kur geçersiz",
+	"MISSING_PASSENGER_TYPE": "yolcu tipi belirlenemedi",
+}
+PRICE_SANITY_RANGE = (100, 20000)
+
+
+def _preflight_warnings(normalized: dict[str, Any], issues: list[dict]) -> str | None:
+	"""Human-readable dry-run warnings: missing cost rules and unusual prices."""
+	parts = [
+		f"{issue['cost_type']}{' (' + issue['detail'] + ')' if issue.get('detail') else ''}: "
+		f"{ISSUE_TEXT.get(issue['code'], issue['code'])}"
+		for issue in issues
+	]
+	price = flt(normalized.get("ucret"))
+	if normalized.get("statu") == "UMRECI" and not (PRICE_SANITY_RANGE[0] <= price <= PRICE_SANITY_RANGE[1]):
+		parts.append(_("FİYAT {0} olağan aralık dışında ({1}–{2} USD)").format(price, *PRICE_SANITY_RANGE))
+	return (_("Uyarı") + ": " + " · ".join(parts)) if parts else None
 
 
 def _lock_existing_booking(booking_name: str) -> None:
@@ -769,6 +847,9 @@ def _process_row(
 	existing_umreci = _find_existing_umreci(normalized["tc_kimlik"])
 	if existing_umreci:
 		umreci = frappe.get_doc(DOCTYPE_UMRECI, existing_umreci)
+		conflict = _identity_conflict(umreci, normalized)
+		if conflict:
+			frappe.throw(conflict)
 		existing_booking = _find_existing_booking(existing_umreci, import_doc.target_tour)
 		if existing_booking:
 			booking = frappe.get_doc(DOCTYPE_BOOKING, existing_booking)
@@ -810,15 +891,20 @@ def _process_row(
 			}[staged["row_status"]]
 			if dry_run or staged["row_status"] == "No-op":
 				if dry_run and staged["row_status"] == "Update Ready":
-					_validate_component_inputs_for_import(
-						import_doc.target_tour, normalized, booking
+					warning = _preflight_warnings(
+						normalized,
+						_validate_component_inputs_for_import(import_doc.target_tour, normalized, booking),
 					)
+					if warning and not staged.get("message"):
+						staged["message"] = warning
 				return staged
 			if staged["row_status"] in {"Blocked Accounting", "Blocked Company"}:
 				frappe.throw(staged["message"])
 	if dry_run:
-		_validate_component_inputs_for_import(import_doc.target_tour, normalized)
-		staged = _stage_row(import_doc, row_number, raw, normalized, "Create Ready", referral=referral)
+		warning = _preflight_warnings(
+			normalized, _validate_component_inputs_for_import(import_doc.target_tour, normalized)
+		)
+		staged = _stage_row(import_doc, row_number, raw, normalized, "Create Ready", warning, referral)
 		staged["umreci_link"] = existing_umreci
 		staged["umreci_action"] = "Değişiklik yok" if existing_umreci else "Oluşturulacak"
 		staged["booking_action"] = "Oluşturulacak"
@@ -883,6 +969,7 @@ def _process_row(
 				"statu": normalized["statu"],
 				"ucret": normalized["ucret"],
 				"bildirilen_odenen": normalized["bildirilen_odenen"],
+				"kms": normalized["kms"],
 				"odenen": 0,
 				"cost_policy": "System Rules",
 				"cost_policy_version": "1",

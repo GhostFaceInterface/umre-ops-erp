@@ -27,6 +27,10 @@
   "bildirilen_odenen",
   "kms",
   "odeme_turu",
+  "iptal_section",
+  "iptal_edildi",
+  "iptal_tarihi",
+  "iptal_notu",
   "payments_section",
   "payments",
   "otel_maliyeti",
@@ -70,13 +74,13 @@
    "reqd": 1
   },
   {
+   "default": "UMRECI",
    "fieldname": "statu",
    "fieldtype": "Select",
+   "in_list_view": 1,
    "label": "Statü",
    "options": "UMRECI\nHOCA\nHOCA_ESI\nHOCA_COCUGU\nFREE\nSIRKET_MUDURU\nSIRKET_MUDURU_ESI\nSIRKET_MUDURU_COCUGU",
-   "default": "UMRECI",
-   "reqd": 1,
-   "in_list_view": 1
+   "reqd": 1
   },
   {
    "fieldname": "kimden_geldi",
@@ -114,9 +118,11 @@
    "label": "Dönüş Şehri"
   },
   {
+   "description": "Komisyoncuya ödenen tutar; fiyata dahildir. Net satış = Ücret − KMS.",
    "fieldname": "kms",
    "fieldtype": "Currency",
-   "label": "KMS",
+   "label": "KMS (Komisyon)",
+   "non_negative": 1,
    "options": "Umre Tour:tur:para_birimi"
   },
   {
@@ -148,47 +154,47 @@
    "reqd": 1
   },
   {
+   "description": "DEPRECATED — kept for historical snapshot only. The component-based cost engine writes to `Cost Component`; reports and accounting read from there. Do not edit or rely on this field.",
    "fieldname": "otel_maliyeti",
    "fieldtype": "Currency",
+   "hidden": 1,
    "label": "Otel Maliyeti",
    "options": "Umre Tour:tur:para_birimi",
-   "read_only": 1,
-   "hidden": 1,
-   "description": "DEPRECATED — kept for historical snapshot only. The component-based cost engine writes to `Cost Component`; reports and accounting read from there. Do not edit or rely on this field."
+   "read_only": 1
   },
   {
+   "description": "DEPRECATED — kept for historical snapshot only. The component-based cost engine writes to `Cost Component`; reports and accounting read from there. Do not edit or rely on this field.",
    "fieldname": "vize_maliyeti",
    "fieldtype": "Currency",
+   "hidden": 1,
    "label": "Vize Maliyeti",
    "options": "Umre Tour:tur:para_birimi",
-   "read_only": 1,
-   "hidden": 1,
-   "description": "DEPRECATED — kept for historical snapshot only. The component-based cost engine writes to `Cost Component`; reports and accounting read from there. Do not edit or rely on this field."
+   "read_only": 1
   },
   {
+   "description": "DEPRECATED — kept for historical snapshot only. The component-based cost engine writes to `Cost Component`; reports and accounting read from there. Do not edit or rely on this field.",
    "fieldname": "toplam_maliyet",
    "fieldtype": "Currency",
+   "hidden": 1,
    "label": "Toplam Maliyet",
    "options": "Umre Tour:tur:para_birimi",
-   "read_only": 1,
-   "hidden": 1,
-   "description": "DEPRECATED — kept for historical snapshot only. The component-based cost engine writes to `Cost Component`; reports and accounting read from there. Do not edit or rely on this field."
+   "read_only": 1
   },
   {
+   "description": "DEPRECATED — kept for historical snapshot only. The component-based cost engine writes to `Cost Component`; reports and accounting read from there. Do not edit or rely on this field.",
    "fieldname": "kar",
    "fieldtype": "Currency",
+   "hidden": 1,
    "label": "Kar",
    "options": "Umre Tour:tur:para_birimi",
-   "read_only": 1,
-   "hidden": 1,
-   "description": "DEPRECATED — kept for historical snapshot only. The component-based cost engine writes to `Cost Component`; reports and accounting read from there. Do not edit or rely on this field."
+   "read_only": 1
   },
   {
    "fieldname": "ucret",
    "fieldtype": "Currency",
    "label": "Ücret",
-   "reqd": 1,
-   "options": "Umre Tour:tur:para_birimi"
+   "options": "Umre Tour:tur:para_birimi",
+   "reqd": 1
   },
   {
    "fieldname": "manual_cost",
@@ -197,11 +203,11 @@
    "options": "Umre Tour:tur:para_birimi"
   },
   {
+   "description": "Legacy alan; yeni Excel aktarımları tarafından doldurulmaz.",
    "fieldname": "kayit_tarihi",
    "fieldtype": "Date",
-   "label": "Kayıt Tarihi",
    "hidden": 1,
-   "description": "Legacy alan; yeni Excel aktarımları tarafından doldurulmaz."
+   "label": "Kayıt Tarihi"
   },
   {
    "fieldname": "odenen",
@@ -210,17 +216,45 @@
    "options": "Umre Tour:tur:para_birimi"
   },
   {
+   "description": "Excel beyanıdır; tahsilat veya muhasebe hareketi değildir.",
    "fieldname": "bildirilen_odenen",
    "fieldtype": "Currency",
-   "label": "Bildirilen Ödenen",
-   "options": "Umre Tour:tur:para_birimi",
-   "description": "Excel beyanıdır; tahsilat veya muhasebe hareketi değildir."
+   "label": "Excel'e Göre Ödenen",
+   "options": "Umre Tour:tur:para_birimi"
   },
   {
    "fieldname": "odeme_turu",
    "fieldtype": "Select",
    "label": "Ödeme türü",
    "options": "Havale\nElden\nTaksit"
+  },
+  {
+   "collapsible": 1,
+   "collapsible_depends_on": "eval:doc.iptal_edildi",
+   "fieldname": "iptal_section",
+   "fieldtype": "Section Break",
+   "label": "İptal"
+  },
+  {
+   "default": "0",
+   "description": "İptal edilen yolcu gelir, maliyet, tahsilat ve kontenjan hesaplarına dahil edilmez.",
+   "fieldname": "iptal_edildi",
+   "fieldtype": "Check",
+   "in_standard_filter": 1,
+   "label": "İptal Edildi"
+  },
+  {
+   "depends_on": "eval:doc.iptal_edildi",
+   "fieldname": "iptal_tarihi",
+   "fieldtype": "Date",
+   "label": "İptal Tarihi",
+   "mandatory_depends_on": "eval:doc.iptal_edildi"
+  },
+  {
+   "depends_on": "eval:doc.iptal_edildi",
+   "fieldname": "iptal_notu",
+   "fieldtype": "Small Text",
+   "label": "İptal Notu"
   },
   {
    "fieldname": "payments_section",
@@ -234,51 +268,52 @@
    "options": "Umre Booking Payment"
   },
   {
+   "description": "DEPRECATED — kept for historical snapshot only. The component-based cost engine writes to `Cost Component`; reports and accounting read from there. Do not edit or rely on this field.",
    "fieldname": "ucak_maliyeti",
    "fieldtype": "Currency",
+   "hidden": 1,
    "label": "Uçak Maliyeti",
    "options": "Umre Tour:tur:para_birimi",
-   "read_only": 1,
-   "hidden": 1,
-   "description": "DEPRECATED — kept for historical snapshot only. The component-based cost engine writes to `Cost Component`; reports and accounting read from there. Do not edit or rely on this field."
+   "read_only": 1
   },
   {
+   "description": "DEPRECATED — kept for historical snapshot only. The component-based cost engine writes to `Cost Component`; reports and accounting read from there. Do not edit or rely on this field.",
    "fieldname": "diyanet_maliyeti",
    "fieldtype": "Currency",
+   "hidden": 1,
    "label": "Diyanet Maliyeti",
    "options": "Umre Tour:tur:para_birimi",
-   "read_only": 1,
-   "hidden": 1,
-   "description": "DEPRECATED — kept for historical snapshot only. The component-based cost engine writes to `Cost Component`; reports and accounting read from there. Do not edit or rely on this field."
+   "read_only": 1
   },
   {
    "default": 0,
+   "description": "Bilgi amaçlıdır; Diyanet maliyeti tur kuralından gelir.",
    "fieldname": "diyanet_kart_var",
    "fieldtype": "Check",
    "label": "Diyanet kart var"
   },
   {
+   "collapsible": 1,
    "fieldname": "financial_lock_section",
    "fieldtype": "Section Break",
-   "label": "Finansal Kilit",
-   "collapsible": 1
+   "label": "Finansal Kilit"
   },
   {
    "default": "0",
    "fieldname": "is_imported",
    "fieldtype": "Check",
+   "in_standard_filter": 1,
    "label": "Excel'den İçeri Aktarıldı",
-   "read_only": 1,
-   "in_standard_filter": 1
+   "read_only": 1
   },
   {
    "default": "0",
+   "description": "1 olduğunda statu, ücret ve manuel maliyet alanları DEĞİŞTİRİLEMEZ. Excel doğruluğu için.",
    "fieldname": "locked_financials",
    "fieldtype": "Check",
-   "label": "Finansal Kilit (Değiştirilemez)",
-   "read_only": 1,
    "in_standard_filter": 1,
-   "description": "1 olduğunda statu, ücret ve manuel maliyet alanları DEĞİŞTİRİLEMEZ. Excel doğruluğu için."
+   "label": "Finansal Kilit (Değiştirilemez)",
+   "read_only": 1
   },
   {
    "default": "Legacy Manual",
@@ -308,7 +343,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-04-23 12:00:00.000000",
+ "modified": "2026-10-09 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Umre Ops",
  "name": "Umre Booking",
@@ -332,5 +367,6 @@
  "rows_threshold_for_grid_search": 20,
  "sort_field": "creation",
  "sort_order": "DESC",
- "states": []
+ "states": [],
+ "track_changes": 1
 }

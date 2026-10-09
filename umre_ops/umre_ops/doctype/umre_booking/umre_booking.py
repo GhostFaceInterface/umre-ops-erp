@@ -7,7 +7,7 @@ import frappe
 from frappe import _
 from frappe.exceptions import PermissionError
 from frappe.model.document import Document
-from frappe.utils import flt
+from frappe.utils import cint, flt, nowdate
 
 from umre_ops.umre_ops.doctype.umre_booking_payment.umre_booking_payment import (
 	validate_payment_date_provenance,
@@ -17,6 +17,9 @@ from umre_ops.umre_ops.services.booking_calculation_service import (
 	apply_to_booking,
 	compute_booking_view,
 )
+
+PAYMENT_STATUSES_NOT_COLLECTED = frozenset({"Failed", "Cancelled"})
+CLOSED_TOUR_STATUSES = frozenset({"İptal", "Kapandı"})
 
 
 class UmreBooking(Document):
@@ -39,7 +42,49 @@ class UmreBooking(Document):
 			apply_to_booking(self)
 
 		self._enforce_posted_cost_lock()
+		self._apply_cancellation_defaults()
+		self._validate_tour_availability()
+		self._validate_commission()
 		self._sync_paid_amount_from_payments()
+
+	def _validate_tour_availability(self) -> None:
+		"""New bookings need an open tour; exceeding the quota is flagged, not blocked."""
+		if not self.get("tur") or not self.is_new():
+			return
+		durum, kontenjan = frappe.db.get_value("Umre Tour", self.tur, ["durum", "kontenjan"]) or (None, 0)
+		if durum in CLOSED_TOUR_STATUSES:
+			frappe.throw(_("{0} durumundaki tura yeni rezervasyon eklenemez: {1}").format(durum, self.tur))
+		if not cint(kontenjan) or self.get("iptal_edildi"):
+			return
+		active = frappe.db.count("Umre Booking", {"tur": self.tur, "iptal_edildi": 0})
+		if active + 1 > cint(kontenjan):
+			frappe.msgprint(
+				_("Tur kontenjanı ({0}) aşılıyor: bu kayıtla {1} aktif yolcu olacak.").format(
+					kontenjan, active + 1
+				),
+				indicator="orange",
+				alert=True,
+			)
+
+	def _apply_cancellation_defaults(self) -> None:
+		"""A cancelled passenger stays on record but is excluded from every calculation."""
+		if self.get("iptal_edildi"):
+			if not self.get("iptal_tarihi"):
+				self.iptal_tarihi = nowdate()
+		elif self.get("iptal_tarihi"):
+			self.iptal_tarihi = None
+
+	def _validate_commission(self) -> None:
+		"""KMS is the agent commission included in `ucret`; net sale = ucret − kms."""
+		kms = flt(self.get("kms") or 0)
+		if kms < 0:
+			frappe.throw(_("KMS (komisyon) negatif olamaz."))
+		if not kms:
+			return
+		if (self.get("statu") or "UMRECI") != "UMRECI":
+			frappe.throw(_("KMS (komisyon) yalnız UMRECI statüsündeki yolcular için girilebilir."))
+		if kms > flt(self.get("ucret") or 0):
+			frappe.throw(_("KMS (komisyon) ücretten büyük olamaz."))
 
 	def on_update(self) -> None:
 		"""Keep persisted cost components in step with cost-driving fields."""
@@ -160,18 +205,55 @@ class UmreBooking(Document):
 				frappe.throw(_("Locked field '{0}' cannot be modified after import.").format(field))
 
 	def _sync_paid_amount_from_payments(self) -> None:
+		"""Keep `odenen` equal to the sum of valid payment rows in the tour currency.
+
+		- Failed / Cancelled rows are not collections.
+		- New or edited rows must be positive and in the tour currency (empty = tour currency).
+		- When the last row is removed, `odenen` returns to 0. A legacy `odenen` typed
+		  on a booking that never had payment rows is left as is.
+		- No accounting entries are created here; posting is explicit via services/APIs.
 		"""
-		Backward-compatible normalization:
-		- If `payments` child table is used, keep `odenen` equal to the sum of payment rows.
-		- Do not create any accounting entries here; posting is explicit via services/APIs.
-		"""
-		if not self.get("payments"):
+		rows = self.get("payments") or []
+		if not rows:
+			before = self.get_doc_before_save() if not self.is_new() else None
+			if before is not None and before.get("payments"):
+				self.odenen = 0
 			return
+		tour_currency = (
+			frappe.db.get_value("Umre Tour", self.tur, "para_birimi") if self.get("tur") else None
+		) or "USD"
+		persisted = self._persisted_payment_rows()
 		total = 0.0
-		for row in self.get("payments") or []:
-			amt = flt(getattr(row, "amount", 0) or 0)
-			total += amt
+		for row in rows:
+			if not row.get("currency"):
+				row.currency = tour_currency
+			old = persisted.get(row.name) if row.name else None
+			edited = old is None or flt(old.amount) != flt(row.amount) or old.currency != row.currency
+			if edited and flt(row.amount) <= 0:
+				frappe.throw(_("Ödeme satırı tutarı sıfırdan büyük olmalıdır (satır {0}).").format(row.idx))
+			if edited and row.currency != tour_currency:
+				frappe.throw(
+					_("Ödeme satırı para birimi tur para birimi ({0}) olmalıdır (satır {1}).").format(
+						tour_currency, row.idx
+					)
+				)
+			if row.get("posting_status") in PAYMENT_STATUSES_NOT_COLLECTED or row.currency != tour_currency:
+				continue
+			total += flt(row.amount)
 		self.odenen = flt(total)
+
+	def _persisted_payment_rows(self) -> dict:
+		if self.is_new():
+			return {}
+		return {
+			row.name: row
+			for row in frappe.get_all(
+				"Umre Booking Payment",
+				filters={"parent": self.name, "parenttype": "Umre Booking", "parentfield": "payments"},
+				fields=["name", "amount", "currency"],
+				limit_page_length=0,
+			)
+		}
 
 	def _enforce_posted_payment_lock(self) -> None:
 		"""Do not allow a submitted accounting voucher's source row to drift."""
@@ -219,16 +301,18 @@ class UmreBooking(Document):
 			or row.date_verification_status == "Verified"
 			or row.date_repair_key
 		}
-		if not protected:
-			return
-		current = {row.name: row for row in self.get("payments") or [] if row.name}
 		persisted_by_name = {row.name: row for row in persisted}
+		# Checked before the early return: a booking without protected rows must not
+		# be able to self-verify a payment date through the API either.
 		for row in self.get("payments") or []:
 			old = persisted_by_name.get(row.name)
 			if row.get("date_verification_status") == "Verified" and (
 				not old or old.date_verification_status != "Verified"
 			):
 				frappe.throw(_("Payment dates can be verified only through the reconciliation workflow."))
+		if not protected:
+			return
+		current = {row.name: row for row in self.get("payments") or [] if row.name}
 		for row_name, old in protected.items():
 			new = current.get(row_name)
 			if not new:

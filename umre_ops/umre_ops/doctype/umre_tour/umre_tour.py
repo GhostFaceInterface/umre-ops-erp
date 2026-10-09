@@ -4,7 +4,7 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import flt
+from frappe.utils import flt, getdate
 
 from umre_ops.umre_ops.services.permission_service import require_doctype_permission
 from umre_ops.umre_ops.services.season_service import apply_active_season
@@ -19,6 +19,8 @@ class UmreTour(Document):
 			frappe.throw(_("Umre turları ve rezervasyon finansalları USD olmalıdır."))
 		if not self.is_new() and self.has_value_changed("season"):
 			frappe.throw(_("Kaydedilmiş bir turun sezonu değiştirilemez."))
+		if self.baslangic_tarihi and self.bitis_tarihi and getdate(self.bitis_tarihi) < getdate(self.baslangic_tarihi):
+			frappe.throw(_("Tur bitiş tarihi başlangıç tarihinden önce olamaz."))
 
 	def on_update(self) -> None:
 		# Passenger age is measured at the tour start date.
@@ -55,7 +57,7 @@ def _participant_rows(tour: str) -> list[dict]:
 			u.ad, u.soyad, u.telefon_numarasi, u.tc_kimlik
 		FROM `tabUmre Booking` b
 		JOIN `tabUmreci` u ON u.name = b.umreci
-		WHERE b.tur = %s
+		WHERE b.tur = %s AND IFNULL(b.iptal_edildi, 0) = 0
 		ORDER BY u.soyad, u.ad, b.creation
 		""",
 		(tour,),
