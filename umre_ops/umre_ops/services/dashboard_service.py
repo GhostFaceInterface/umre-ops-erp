@@ -1,36 +1,23 @@
 # Copyright (c) 2026, Sermed Turizm and contributors
 # For license information, please see license.txt
 """
-Financial dashboard aggregation service.
+Financial dashboard endpoints (Umre Operasyon Paneli).
 
-Public, whitelisted entry point:
+Every number comes from ``pnl_service.get_season_pnl`` — the same calculation
+used by the Tour Revenue Summary report — so the panel and the report agree.
 
-    get_tour_cost_breakdown(season: str | None = None, tour: str | None = None) -> dict
+``get_tour_cost_breakdown(season=None, tour=None)`` returns:
 
-Returns the strict data contract for the Umre Operasyon Paneli dashboard:
+    kpis:        net_sales, gross_sales, commission, total_cost, passenger_cost,
+                 tour_extra_expense, tour_profit, overhead, season_result
+                 (+ legacy keys total_revenue / net_profit)
+    cost_breakdown: [{key, label, value, currency, color}]
+    performance: profit_per_paying_passenger, cost_per_person, food_ratio
+    collections: collected, excel_reported, open_receivable, overpaid
+    meta:        passenger counts
+    warnings:    [{code, message, count, examples, details}]
 
-    {
-        "kpis": {
-            "total_revenue": float,
-            "total_cost": float,
-            "net_profit": float,
-        },
-        "configured_cost_items": [
-            {"key": str, "label": str, "value": float, "currency": "USD",
-             "source_doctype": str, "source_name": str}
-        ],
-        "performance": {
-            "cost_per_person": float,
-            "profit_per_person": float,
-            "food_ratio": float,  # percentage, 0..100
-        },
-        "meta": {
-            "kisi_sayisi": int,
-        },
-    }
-
-The chart reads saved cost-rule rows directly. Persisted booking components are
-kept separate and are used only for the historical KPI totals.
+Warnings never hide numbers: they say which bookings are incomplete.
 """
 from __future__ import annotations
 
@@ -38,25 +25,25 @@ from typing import Any
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt
 
-from umre_ops.umre_ops.services import cost_engine
 from umre_ops.umre_ops.services.expense_service import get_operational_dashboard_summary
 from umre_ops.umre_ops.services.permission_service import require_doctype_permission
+from umre_ops.umre_ops.services.pnl_service import get_season_pnl
 from umre_ops.umre_ops.services.season_service import get_active_season
 
 CURRENCY = "USD"
 
-# Doughnut legend colours (align with `Cost Type` codes).
+# Doughnut colours keyed by `Cost Type` code so a type keeps its colour everywhere.
 CHART_HEX_BY_CODE: dict[str, str] = {
-	"HOTEL":   "#ff4d4f",
-	"FLIGHT":  "#ff7a45",
-	"VISA":    "#ffa940",
+	"HOTEL": "#ff4d4f",
+	"FLIGHT": "#ff7a45",
+	"VISA": "#ffa940",
 	"DIYANET": "#36cfc9",
-	"MEAL":    "#597ef7",
-	"OTHER":   "#9254de",
-	"MANUAL":  "#13c2c2",
+	"MEAL": "#597ef7",
+	"OTHER": "#9254de",
+	"MANUAL": "#13c2c2",
 }
+FALLBACK_COLOR = "#8c8c8c"
 COST_LABEL_BY_CODE: dict[str, str] = {
 	"HOTEL": "Otel", "FLIGHT": "Uçak", "VISA": "Vize", "DIYANET": "Diyanet",
 	"MEAL": "Yemek", "OTHER": "Diğer", "MANUAL": "Manuel",
@@ -81,10 +68,7 @@ def _list_tour_options(season: str) -> list[dict[str, str]]:
 		order_by="modified desc",
 		limit_page_length=0,
 	)
-	return [
-		{"name": r["name"], "label": r.get("tur_adi") or r["name"]}
-		for r in rows
-	]
+	return [{"name": r["name"], "label": r.get("tur_adi") or r["name"]} for r in rows]
 
 
 def _assert_usd_tours(season: str, tour: str | None) -> None:
@@ -106,238 +90,21 @@ def _assert_usd_tours(season: str, tour: str | None) -> None:
 		)
 
 
-def _company_context() -> str:
+def _company_context() -> str | None:
 	company = frappe.db.get_single_value("Umre Ops Settings", "company")
-	if not company:
-		frappe.throw(_("Umre Ops Settings üzerinde şirket seçilmelidir."))
-	company_doc = frappe.get_doc("Company", company)
-	company_doc.check_permission("read")
-	return company
+	if company:
+		frappe.get_doc("Company", company).check_permission("read")
+	return company or None
 
 
-def _booking_metrics(season: str, tour: str | None, company: str) -> dict[str, float]:
-	"""Single SQL: per-tour or all-tours booking-side aggregates."""
-	where = "WHERE t.season = %(season)s"
-	params: dict[str, Any] = {"season": season, "company": company}
-	if tour:
-		where += " AND b.tur = %(tour)s"
-		params["tour"] = tour
-
-	row = frappe.db.sql(
-		f"""
-		SELECT
-		  COUNT(*)                                               AS kisi_sayisi,
-		  SUM(CASE WHEN b.statu = 'UMRECI' THEN 1 ELSE 0 END)     AS umreci_count,
-		  SUM(CASE WHEN b.statu <> 'UMRECI' THEN 1 ELSE 0 END)    AS non_umreci_count,
-		  SUM(CASE WHEN b.statu = 'UMRECI' THEN b.ucret ELSE 0 END) AS gelir,
-		  SUM(CASE WHEN b.statu = 'UMRECI' THEN b.odenen ELSE 0 END) AS tahsil_edilen
-		FROM `tabUmre Booking` b
-		JOIN `tabUmre Tour` t ON t.name = b.tur
-		{where} AND (b.company = %(company)s OR COALESCE(b.company, '') = '')
-		""",
-		params,
-		as_dict=True,
-	)
-	r = row[0] if row else {}
-	return {
-		"kisi_sayisi":      int(r.get("kisi_sayisi") or 0),
-		"umreci_count":     int(r.get("umreci_count") or 0),
-		"non_umreci_count": int(r.get("non_umreci_count") or 0),
-		"gelir":            flt(r.get("gelir") or 0),
-		"tahsil_edilen":    flt(r.get("tahsil_edilen") or 0),
-	}
+def _cost_type_labels() -> dict[str, str]:
+	labels = dict(COST_LABEL_BY_CODE)
+	for row in frappe.get_all("Cost Type", fields=["name", "cost_type_name"], limit_page_length=0):
+		labels.setdefault(row["name"], row.get("cost_type_name") or row["name"])
+	return labels
 
 
-def _actual_component_totals(season: str, tour: str | None, company: str) -> dict[str, float]:
-	"""Return USD booking-component totals grouped by their persisted cost type."""
-	where = "WHERE t.season = %(season)s"
-	params: dict[str, Any] = {"season": season, "company": company}
-	if tour:
-		where += " AND b.tur = %(tour)s"
-		params["tour"] = tour
-	rows = frappe.db.sql(
-		f"""
-		SELECT c.cost_type, SUM(c.amount) AS total
-		FROM `tabCost Component` c
-		JOIN `tabUmre Booking` b ON b.name = c.booking
-		JOIN `tabUmre Tour` t ON t.name = b.tur
-		{where}
-		  AND (b.company = %(company)s OR COALESCE(b.company, '') = '')
-		  AND c.currency = %(currency)s
-		GROUP BY c.cost_type
-		""",
-		{**params, "currency": CURRENCY},
-		as_dict=True,
-	)
-	return {row["cost_type"]: flt(row.get("total") or 0) for row in rows}
-
-
-def _component_integrity_warnings(
-	season: str, tour: str | None, company: str
-) -> list[dict[str, Any]]:
-	"""Make incomplete or mixed-currency snapshots visible instead of summing them."""
-	where = "WHERE t.season = %(season)s"
-	params: dict[str, Any] = {"season": season, "currency": CURRENCY, "company": company}
-	if tour:
-		where += " AND b.tur = %(tour)s"
-		params["tour"] = tour
-	rows = frappe.db.sql(
-		f"""
-		SELECT b.name AS booking, b.company, b.tur, b.statu, b.cost_policy,
-		       c.name AS component, c.cost_type, c.currency, c.is_system_generated
-		FROM `tabUmre Booking` b
-		JOIN `tabUmre Tour` t ON t.name = b.tur
-		LEFT JOIN `tabCost Component` c ON c.booking = b.name
-		{where} AND (b.company = %(company)s OR COALESCE(b.company, '') = '')
-		""",
-		params,
-		as_dict=True,
-	)
-	by_booking: dict[str, dict[str, Any]] = {}
-	for row in rows:
-		entry = by_booking.setdefault(row["booking"], {"booking": row, "components": []})
-		if row.get("component"):
-			entry["components"].append(row)
-	warnings = []
-	for booking_name, entry in by_booking.items():
-		booking = entry["booking"]
-		components = entry["components"]
-		if not booking.get("company"):
-			warnings.append({"code": "MISSING_COMPANY", "booking": booking_name,
-				"message": _("Şirketi boş tarihi rezervasyon Settings şirketi kapsamında gösteriliyor.")})
-		required = cost_engine.required_system_types_for_booking(
-			booking.get("tur"), booking.get("statu"), booking.get("cost_policy")
-		)
-		system_types = [row.get("cost_type") for row in components if cint(row.get("is_system_generated"))]
-		missing = [code for code in required if code not in system_types]
-		if missing:
-			warnings.append({"code": "MISSING_COMPONENT", "booking": booking_name,
-				"message": _("Eksik zorunlu bileşenler: {0}").format(", ".join(missing))})
-		duplicates = sorted({code for code in system_types if system_types.count(code) > 1})
-		if duplicates:
-			warnings.append({"code": "DUPLICATE_COMPONENT", "booking": booking_name,
-				"message": _("Yinelenen sistem bileşenleri: {0}").format(", ".join(duplicates))})
-		if any((row.get("currency") or "") != CURRENCY for row in components):
-			warnings.append({"code": "NON_USD_COMPONENT", "booking": booking_name,
-				"message": _("Rezervasyonda USD dışı maliyet bileşeni var.")})
-	return warnings
-
-
-def _configured_cost_items(season: str, tour: str | None) -> list[dict[str, Any]]:
-	"""Return one dashboard row per persisted cost-rule record.
-
-	This is intentionally independent from booking ``Cost Component`` rows. Submitted
-	booking costs remain historical snapshots; unposted snapshots may be refreshed
-	without changing what the chart displays.
-	"""
-	tours = [tour] if tour else frappe.get_all(
-		"Umre Tour", filters={"season": season}, pluck="name", limit_page_length=0
-	)
-	if not tours:
-		return []
-	items: list[dict[str, Any]] = []
-
-	def append(doctype: str, row: dict, label: str, value: float) -> None:
-		items.append({
-			"key": f"{doctype}:{row['name']}",
-			"label": label,
-			"value": flt(value, 2),
-			"currency": CURRENCY,
-			"source_doctype": doctype,
-			"source_name": row["name"],
-		})
-
-	for row in frappe.get_all(
-		"Tour Hotel Cost Rule",
-		filters={"tur": ["in", tours]},
-		fields=["name", "tur", "lokasyon", "gece_sayisi", "birim_fiyat_sar", "kur"],
-		order_by="tur, lokasyon, creation",
-		limit_page_length=0,
-	):
-		nights, unit_sar, sar_per_usd = (
-			flt(row.get("gece_sayisi")), flt(row.get("birim_fiyat_sar")), flt(row.get("kur"))
-		)
-		if nights * unit_sar > 0 and sar_per_usd <= 0:
-			frappe.throw(_("Otel kuralında SAR/USD kuru eksik: {0}").format(row["name"]))
-		value = nights * unit_sar / sar_per_usd if sar_per_usd > 0 else 0
-		append("Tour Hotel Cost Rule", row, f"{row['tur']} · Otel · {row.get('lokasyon')}", value)
-
-	for row in frappe.get_all(
-		"Tour Airfare Cost Rule",
-		filters={"tur": ["in", tours]},
-		fields=["name", "tur", "yolcu_tipi", "tutar"],
-		order_by="tur, yolcu_tipi, creation",
-		limit_page_length=0,
-	):
-		append(
-			"Tour Airfare Cost Rule",
-			row,
-			f"{row['tur']} · Uçak · {row.get('yolcu_tipi')}",
-			row.get("tutar"),
-		)
-
-	for row in frappe.get_all(
-		"Tour Visa Cost Rule",
-		filters={"tur": ["in", tours]},
-		fields=["name", "tur", "vize_tipi", "tutar"],
-		order_by="tur, vize_tipi, creation",
-		limit_page_length=0,
-	):
-		append("Tour Visa Cost Rule", row, f"{row['tur']} · Vize · {row.get('vize_tipi')}", row.get("tutar"))
-
-	for row in frappe.get_all(
-		"Tour Diyanet Card Rule",
-		filters={"tur": ["in", tours]}, fields=["name", "tur", "tutar"],
-		order_by="tur, creation", limit_page_length=0,
-	):
-		append("Tour Diyanet Card Rule", row, f"{row['tur']} · Diyanet", row.get("tutar"))
-
-	hotel_nights: dict[str, dict[str, float]] = {name: {"Mekke": 0, "Medine": 0} for name in tours}
-	for row in frappe.get_all(
-		"Tour Hotel Cost Rule", filters={"tur": ["in", tours]},
-		fields=["tur", "lokasyon", "gece_sayisi"], limit_page_length=0,
-	):
-		if row.get("lokasyon") in {"Mekke", "Medine"}:
-			hotel_nights[row["tur"]][row["lokasyon"]] += flt(row.get("gece_sayisi"))
-	for row in frappe.get_all(
-		"Meal Cost Rule", filters={"tour": ["in", tours]},
-		fields=["name", "tour", "mekke_price_sar", "medine_price_sar", "sar_to_usd_rate"],
-		order_by="tour, creation", limit_page_length=0,
-	):
-		nights = hotel_nights[row["tour"]]
-		sar_total = (
-			nights["Mekke"] * flt(row.get("mekke_price_sar"))
-			+ nights["Medine"] * flt(row.get("medine_price_sar"))
-		)
-		rate = flt(row.get("sar_to_usd_rate"))
-		if sar_total > 0 and rate <= 0:
-			frappe.throw(_("Yemek kuralında SAR/USD kuru eksik: {0}").format(row["name"]))
-		value = sar_total / rate if rate > 0 else 0
-		append("Meal Cost Rule", row, f"{row['tour']} · Yemek", value)
-
-	for row in frappe.get_all(
-		"Other Cost Rule", filters={"tour": ["in", tours]},
-		fields=["name", "tour", "per_person_cost"], order_by="tour, creation", limit_page_length=0,
-	):
-		append("Other Cost Rule", row, f"{row['tour']} · Diğer", row.get("per_person_cost"))
-	return items
-
-
-@frappe.whitelist()
-def get_tour_cost_breakdown(
-	season: str | None = None,
-	tour: str | None = None,
-) -> dict[str, Any]:
-	"""Return the strict payload feeding the custom financial dashboard.
-
-	An empty ``season`` selects the active season. An empty ``tour`` aggregates
-	only the tours belonging to that selected season.
-	"""
-	require_doctype_permission("Umre Booking", "read")
-	require_doctype_permission("Umre Tour", "read")
-	require_doctype_permission("Umre Season", "read")
-	season = (season or "").strip() or get_active_season(required=True)
-	tour = (tour or "").strip() or None
+def _validate_selection(season: str, tour: str | None) -> None:
 	if not frappe.db.exists("Umre Season", season):
 		frappe.throw(_("Sezon bulunamadı: {0}").format(season))  # noqa: RUF001
 	if tour:
@@ -346,272 +113,110 @@ def get_tour_cost_breakdown(
 			frappe.throw(_("Tur bulunamadı: {0}").format(tour))  # noqa: RUF001
 		if tour_row.get("season") != season:
 			frappe.throw(_("Seçilen tur {0} sezonuna ait değil.").format(season))
-	_assert_usd_tours(season, tour)
-	company = _company_context()
 
-	booking = _booking_metrics(season, tour, company)
-	configured_cost_items = _configured_cost_items(season, tour)
-	actual_components = _actual_component_totals(season, tour, company)
-	integrity_warnings = _component_integrity_warnings(season, tour, company)
-	financial_data_valid = not any(
-		row["code"] in {
-			"MISSING_COMPANY", "MISSING_COMPONENT", "DUPLICATE_COMPONENT", "NON_USD_COMPONENT",
-		}
-		for row in integrity_warnings
-	)
+
+def build_dashboard_payload(pnl: dict[str, Any], labels: dict[str, str] | None = None) -> dict[str, Any]:
+	"""Shape ``pnl_service`` output for the panel (pure)."""
+	labels = labels or COST_LABEL_BY_CODE
+	totals = pnl["totals"]
 	cost_breakdown = [
 		{
-			"key": cost_type,
-			"label": COST_LABEL_BY_CODE.get(cost_type, cost_type),
-			"value": flt(value, 2),
+			"key": code,
+			"label": labels.get(code, code),
+			"value": value,
 			"currency": CURRENCY,
+			"color": CHART_HEX_BY_CODE.get(code, FALLBACK_COLOR),
 		}
-		for cost_type, value in sorted(actual_components.items())
+		for code, value in totals["maliyet_by_type"].items()
 	]
-	observed_total_cost = flt(sum(row["value"] for row in cost_breakdown), 2)
-	total_cost = observed_total_cost if financial_data_valid else None
-	total_revenue = flt(booking["gelir"], 2)
-	net_profit = flt(total_revenue - observed_total_cost, 2) if financial_data_valid else None
-	kisi = booking["kisi_sayisi"] or 0
-	cost_per_person = (
-		flt(observed_total_cost / kisi, 2)
-		if financial_data_valid and kisi else (0.0 if financial_data_valid else None)
-	)
-	profit_per_person = (
-		flt(net_profit / kisi, 2)
-		if financial_data_valid and kisi else (0.0 if financial_data_valid else None)
-	)
-	meal_total = next((row["value"] for row in cost_breakdown if row["key"] == "MEAL"), 0)
-	food_ratio = (
-		flt((meal_total / observed_total_cost) * 100, 2)
-		if financial_data_valid and observed_total_cost > 0
-		else (0.0 if financial_data_valid else None)
-	)
+	if totals["tur_ekstra_gider"]:
+		cost_breakdown.append({
+			"key": "TOUR_EXTRA",
+			"label": _("Tur Ekstra Gider"),
+			"value": totals["tur_ekstra_gider"],
+			"currency": CURRENCY,
+			"color": FALLBACK_COLOR,
+		})
 	return {
 		"currency": CURRENCY,
-		"selected_season": season,
-		"active_season": get_active_season(),
-		"seasons": _list_season_options(),
-		"tours": _list_tour_options(season),
 		"kpis": {
-			"total_revenue": total_revenue,
-			"total_cost": total_cost,
-			"net_profit": net_profit,
+			"gross_sales": totals["brut_satis"],
+			"commission": totals["komisyon"],
+			"net_sales": totals["net_satis"],
+			"passenger_cost": totals["yolcu_maliyeti"],
+			"tour_extra_expense": totals["tur_ekstra_gider"],
+			"total_cost": totals["toplam_maliyet"],
+			"tour_profit": totals["tur_kari"],
+			"overhead": pnl["genel_gider"],
+			"season_result": pnl["sezon_sonucu"],
+			# Legacy keys kept for existing consumers.
+			"total_revenue": totals["net_satis"],
+			"net_profit": totals["tur_kari"],
 		},
 		"cost_breakdown": cost_breakdown,
-		"integrity_warnings": integrity_warnings,
-		"financial_data_valid": financial_data_valid,
-		"configured_cost_items": configured_cost_items,
 		"performance": {
-			"cost_per_person": cost_per_person,
-			"profit_per_person": profit_per_person,
-			"food_ratio": food_ratio,
+			"profit_per_paying_passenger": totals["kisi_basi_kar"],
+			"cost_per_person": totals["kisi_basi_maliyet"],
+			"food_ratio": totals["yemek_orani"],
+			"profit_per_person": totals["kisi_basi_kar"],
+		},
+		"collections": {
+			"collected": totals["tahsil_edilen"],
+			"excel_reported": totals["excel_bildirilen"],
+			"open_receivable": totals["acik_alacak"],
+			"overpaid": totals["fazla_odeme"],
 		},
 		"meta": {
-			"kisi_sayisi": booking["kisi_sayisi"],
-			"total_count": booking["kisi_sayisi"],
-			"umreci_count": booking["umreci_count"],
-			"non_umreci_count": booking["non_umreci_count"],
-			"company": company,
-			"includes_missing_company_as_settings_company": True,
+			"kisi_sayisi": totals["kisi_sayisi"],
+			"total_count": totals["kisi_sayisi"],
+			"umreci_count": totals["umreci_count"],
+			"non_umreci_count": totals["non_umreci_count"],
 		},
+		"tour_rows": [
+			{key: row[key] for key in ("tour", "label", "kisi_sayisi", "net_satis", "toplam_maliyet", "tur_kari")}
+			for row in pnl["tours"]
+		],
+		"warnings": pnl["warnings"],
+		# A warning never hides numbers anymore; kept for older clients.
+		"financial_data_valid": True,
 	}
-
-
-def _bucket_for_operational_category(category_name: str | None) -> str:
-	"""Map `Operational Expense Category.category_name` to dashboard card bucket."""
-	if not category_name:
-		return "other"
-	n = category_name.lower()
-	if any(k in n for k in ("pazarlama", "reklam")):
-		return "marketing"
-	if any(
-		k in n
-		for k in (
-			"ofis",
-			"kira",
-			"elektrik",
-			"doğalgaz",
-			"dogalgaz",
-			"internet",
-			"bilişim",
-			"bilisim",
-			"yemek - gıda",  # noqa: RUF001
-			"yemek - gida",
-		)
-	) or n.strip() == "su":
-		return "office"
-	if "vergi" in n:
-		return "taxes"
-	if "personel" in n:
-		return "personnel"
-	return "other"
 
 
 @frappe.whitelist()
-def get_operational_expense_dashboard(
-	season: str | None = None,
-	category: str | None = None,
-	currency: str | None = None,
-	money_account: str | None = None,
-) -> dict[str, Any]:
-	"""Confirmed `Operational Expense` totals in **USD** — Sezonluk Genel Giderler panel.
-
-	Draft / Cancelled rows are excluded.
-	"""
-	require_doctype_permission("Operational Expense", "read")
-	if not frappe.db.exists("DocType", "Operational Expense"):
-		return {
-			"currency": CURRENCY,
-			"total_operational_usd": 0.0,
-			"buckets_usd": {
-				"marketing": 0.0,
-				"office": 0.0,
-				"taxes": 0.0,
-				"personnel": 0.0,
-				"other": 0.0,
-			},
-			"chart_by_category": {"labels": [], "datasets": []},
-			"chart_monthly": {"labels": [], "datasets": []},
-			"filters": {
-				"seasons": [],
-				"categories": [],
-				"money_accounts": [],
-				"currencies": [],
-			},
-		}
-
-	season = (season or "").strip() or None
-	category = (category or "").strip() or None
-	currency = (currency or "").strip() or None
-	money_account = (money_account or "").strip() or None
-
-	w = ["oe.status = %(st)s"]
-	params: dict[str, Any] = {"st": "Confirmed"}
-	if season:
-		w.append("oe.season = %(season)s")
-		params["season"] = season
-	if category:
-		w.append("oe.expense_category = %(category)s")
-		params["category"] = category
-	if currency:
-		w.append("oe.currency = %(currency)s")
-		params["currency"] = currency
-	if money_account:
-		w.append("oe.money_account = %(money_account)s")
-		params["money_account"] = money_account
-
-	where = " AND ".join(w)
-
-	row = frappe.db.sql(
-		f"""
-		SELECT COALESCE(SUM(oe.usd_amount), 0) AS total_usd
-		FROM `tabOperational Expense` oe
-		WHERE {where}
-		""",
-		params,
-		as_dict=True,
-	)
-	total_all = flt((row[0] or {}).get("total_usd")) if row else 0.0
-
-	by_cat = frappe.db.sql(
-		f"""
-		SELECT
-		  c.category_name AS category_name,
-		  COALESCE(SUM(oe.usd_amount), 0) AS total_usd
-		FROM `tabOperational Expense` oe
-		LEFT JOIN `tabOperational Expense Category` c ON c.name = oe.expense_category
-		WHERE {where}
-		GROUP BY c.category_name
-		ORDER BY total_usd DESC
-		""",
-		params,
-		as_dict=True,
-	)
-	chart_labels = [r["category_name"] or _("(No category)") for r in by_cat]
-	chart_values = [flt(r.get("total_usd")) for r in by_cat]
-
-	buckets = {"marketing": 0.0, "office": 0.0, "taxes": 0.0, "personnel": 0.0, "other": 0.0}
-	for r in by_cat:
-		bk = _bucket_for_operational_category(r.get("category_name"))
-		buckets[bk] = buckets.get(bk, 0.0) + flt(r.get("total_usd"))
-
-	monthly_rows = frappe.db.sql(
-		f"""
-		SELECT DATE_FORMAT(oe.expense_date, '%%Y-%%m') AS ym,
-		       COALESCE(SUM(oe.usd_amount), 0) AS total_usd
-		FROM `tabOperational Expense` oe
-		WHERE {where}
-		GROUP BY ym
-		ORDER BY ym ASC
-		""",
-		params,
-		as_dict=True,
-	)
-	mt_labels = [r["ym"] or "" for r in monthly_rows]
-	mt_values = [flt(r.get("total_usd")) for r in monthly_rows]
-
-	return {
-		"currency": CURRENCY,
-		"total_operational_usd": total_all,
-		"buckets_usd": {
-			"marketing": buckets["marketing"],
-			"office": buckets["office"],
-			"taxes": buckets["taxes"],
-			"personnel": buckets["personnel"],
-			"other": buckets["other"],
-		},
-		"chart_by_category": {
-			"labels": chart_labels,
-			"datasets": [{"name": _("Gider"), "values": chart_values}],
-		},
-		"chart_monthly": {
-			"labels": mt_labels,
-			"datasets": [{"name": _("USD"), "values": mt_values}],
-		},
-		"filters": {
-			"seasons": frappe.get_all("Umre Season", fields=["name", "season_name"], order_by="modified desc"),
-			"categories": frappe.get_all(
-				"Operational Expense Category", fields=["name", "category_name"], order_by="sort_order asc"
-			),
-			"money_accounts": frappe.get_all(
-				"Umre Money Account",
-				filters={"is_active": 1},
-				fields=["name", "account_name"],
-				order_by="account_name asc",
-			),
-			"currencies": frappe.get_all("Currency", pluck="name", order_by="name asc"),
-		},
-	}
+def get_tour_cost_breakdown(season: str | None = None, tour: str | None = None) -> dict[str, Any]:
+	"""Payload for the tour financial panel. Empty ``season`` = active season."""
+	require_doctype_permission("Umre Booking", "read")
+	require_doctype_permission("Umre Tour", "read")
+	require_doctype_permission("Umre Season", "read")
+	season = (season or "").strip() or get_active_season(required=True)
+	tour = (tour or "").strip() or None
+	_validate_selection(season, tour)
+	_assert_usd_tours(season, tour)
+	company = _company_context()
+	payload = build_dashboard_payload(get_season_pnl(season, tour, company), _cost_type_labels())
+	payload.update({
+		"selected_season": season,
+		"selected_tour": tour or "",
+		"active_season": get_active_season(),
+		"seasons": _list_season_options(),
+		"tours": _list_tour_options(season),
+	})
+	payload["meta"]["company"] = company
+	return payload
 
 
 @frappe.whitelist()
 def get_operational_dashboard_data(filters: dict[str, Any] | str | None = None) -> dict[str, Any]:
-	"""Combined endpoint for the full Umre dashboard.
-
-	Existing tour revenue/cost logic remains delegated to
-	``get_tour_cost_breakdown``. Operational expenses are aggregated through the
-	separate expense service.
-	"""
+	"""Season overhead panel. Independent from the tour calculation on purpose:
+	a tour-side problem must never hide the office expense panel."""
 	from umre_ops.umre_ops.services.expense_service import normalize_filters
 
-	require_doctype_permission("Umre Booking", "read")
 	require_doctype_permission("Operational Expense", "read")
-	filters = normalize_filters(filters)
-	return {
-		"tour_dashboard": get_tour_cost_breakdown(
-			season=filters.get("season"),
-			tour=filters.get("tour"),
-		),
-		"operational_dashboard": get_operational_dashboard_summary(filters),
-	}
+	return {"operational_dashboard": get_operational_dashboard_summary(normalize_filters(filters))}
 
 
 def publish_dashboard_dirty(tour: str | None = None) -> None:
-	"""Emit a realtime nudge so any open dashboard panel re-fetches.
-
-	Cheap fan-out: every desk session subscribed to the event will refetch.
-	"""
+	"""Emit a realtime nudge so any open dashboard panel re-fetches."""
 	frappe.publish_realtime(
 		event="umre_cost_dashboard_dirty",
 		message={"tour": tour or ""},

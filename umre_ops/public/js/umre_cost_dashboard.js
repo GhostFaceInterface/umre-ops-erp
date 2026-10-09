@@ -1,37 +1,50 @@
 /*
  * Umre Operasyon Paneli — Financial Dashboard
  *
- * Strategy: detect when the user lands on the "Umre Operasyon Paneli"
- * Workspace, mount our financial panel above the existing link cards,
- * and refetch on `umre_cost_dashboard_dirty` realtime events.
+ * Mounts two panels above the "Umre Operasyon Paneli" workspace cards and
+ * refetches on realtime `umre_cost_dashboard_dirty` / `umre_operational_expense_dirty`.
  *
- * Single source of truth: backend `umre_ops.umre_ops.services.dashboard_service.get_tour_cost_breakdown`.
+ * All numbers are computed on the server (`pnl_service`, shared with the Tour
+ * Revenue Summary report); this file only renders them.
  */
 (function () {
 	"use strict";
 
-	console.log("[ScrollRestoration] >>> GLOBAL SCRIPT YUKLENDI! <<<");
-
 	const PANEL_ID = "umre-fin-panel";
-	const WORKSPACE_NAME = "Umre Operasyon Paneli";
 	const WORKSPACE_ROUTES = ["umre-operasyon-paneli", "Umre Operasyon Paneli"];
 	const ENDPOINT = "umre_ops.umre_ops.services.dashboard_service.get_tour_cost_breakdown";
-	const COST_COLORS = ["#ff4d4f", "#ff7a45", "#ffa940", "#36cfc9", "#597ef7", "#9254de", "#13c2c2"];
+	const SEASON_PANEL_ID = "umre-season-fin-panel";
+	const SEASON_ENDPOINT = "umre_ops.umre_ops.services.dashboard_service.get_operational_dashboard_data";
+	const CATEGORY_COLORS = ["#ff4d4f", "#ff7a45", "#ffa940", "#36cfc9", "#597ef7", "#9254de", "#13c2c2"];
+	const RULE_DOCTYPES = new Set([
+		"Umre Tour",
+		"Umre Booking",
+		"Tour Hotel Cost Rule",
+		"Tour Airfare Cost Rule",
+		"Tour Visa Cost Rule",
+		"Tour Diyanet Card Rule",
+		"Meal Cost Rule",
+		"Other Cost Rule",
+	]);
 
-	let _state = {
-		season: "",      // "" = backend selects active season
-		tour: "",        // "" = all tours
-		loading: false,
+	const _state = {
+		season: "", // "" = backend selects active season
+		tour: "", // "" = all tours
 		debounce_handle: null,
+		request_seq: 0,
 		chart: null,
-		last_payload: null
 	};
+	const _season_state = {
+		request_seq: 0,
+		chart_cat: null,
+		chart_month: null,
+	};
+
+	const esc = (value) => frappe.utils.escape_html(value == null ? "" : String(value));
 
 	function fmt_money(value, currency) {
 		const n = Number(value || 0);
 		const cur = (currency || "USD").toString().toUpperCase();
-		// Force ISO USD formatting so we never show wrong symbols (e.g. "L") from
-		// corrupted Currency master rows or Company TRY defaults bleeding into Desk.
 		if (cur === "USD") {
 			try {
 				return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
@@ -46,16 +59,11 @@
 				/* fall through */
 			}
 		}
-		try {
-			return frappe.format(n, { fieldtype: "Currency", options: cur });
-		} catch (e) {
-			return cur + " " + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-		}
+		return cur + " " + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 	}
 
 	function fmt_pct(value) {
-		const n = Number(value || 0) * 100;
-		return n.toFixed(1) + "%";
+		return (Number(value || 0) * 100).toFixed(1) + "%";
 	}
 
 	function fmt_pct_value(value) {
@@ -66,13 +74,16 @@
 		return Number(value || 0).toLocaleString("tr-TR");
 	}
 
-	const SEASON_PANEL_ID = "umre-season-fin-panel";
-	const SEASON_ENDPOINT = "umre_ops.umre_ops.services.dashboard_service.get_operational_dashboard_data";
-
-	let _season_state = {
-		chart_cat: null,
-		chart_month: null
-	};
+	function destroy_chart(chart) {
+		if (chart && typeof chart.destroy === "function") {
+			try {
+				chart.destroy();
+			} catch (e) {
+				/* already detached */
+			}
+		}
+		return null;
+	}
 
 	function on_target_route() {
 		const route = (frappe.get_route && frappe.get_route()) || [];
@@ -87,16 +98,16 @@
 			if (tp) tp.remove();
 			const sp = document.getElementById(SEASON_PANEL_ID);
 			if (sp) sp.remove();
-			_state.chart = null;
-			_season_state.chart_cat = null;
-			_season_state.chart_month = null;
+			_state.chart = destroy_chart(_state.chart);
+			_season_state.chart_cat = destroy_chart(_season_state.chart_cat);
+			_season_state.chart_month = destroy_chart(_season_state.chart_month);
 			return;
 		}
 
 		const candidates = [
 			document.querySelector(".workspace-sidebar-toggle ~ .codex-editor"),
 			document.querySelector(".layout-main-section .codex-editor"),
-			document.querySelector(".codex-editor")
+			document.querySelector(".codex-editor"),
 		];
 		const container = candidates.find(Boolean);
 		if (!container) return;
@@ -129,16 +140,18 @@
 	function render_skeleton() {
 		return `
 			<div class="umre-fin-panel__header">
-				<div class="umre-fin-panel__title"><span class="dot"></span>${__("Tur Maliyeti Paneli")}</div>
+				<div class="umre-fin-panel__title"><span class="dot"></span>${__("Tur Kâr / Zarar Paneli")}</div>
 				<div class="umre-fin-panel__filter">
 					<label for="umre-fin-season">${__("Sezon")}</label>
 					<select id="umre-fin-season"></select>
 					<label for="umre-fin-tour">${__("Tur")}</label>
-					<select id="umre-fin-tour"><option value="">${frappe.utils.escape_html(__("Tüm Turlar"))}</option></select>
+					<select id="umre-fin-tour"><option value="">${esc(__("Tüm Turlar"))}</option></select>
 					<button type="button" class="umre-fin-panel__refresh" id="umre-fin-refresh">${__("Yenile")}</button>
 				</div>
 			</div>
 			<div class="umre-fin-hero" id="umre-fin-hero"></div>
+			<div class="umre-fin-hero" id="umre-fin-season-result"></div>
+			<div id="umre-fin-warnings"></div>
 
 			<div class="umre-fin-section">
 				<div class="umre-fin-section__title">${__("Maliyet Dağılımı")}</div>
@@ -153,7 +166,7 @@
 			</div>
 
 			<div class="umre-fin-section">
-				<div class="umre-fin-section__title">${__("Performans")}</div>
+				<div class="umre-fin-section__title">${__("Performans ve Tahsilat")}</div>
 				<div class="umre-fin-section__rule"></div>
 			</div>
 			<div class="umre-fin-kpi" id="umre-fin-kpi"></div>
@@ -172,6 +185,7 @@
 		sel.addEventListener("change", function () {
 			_state.tour = sel.value || "";
 			schedule_refresh(0);
+			schedule_season_refresh(0);
 		});
 		const btn = panel.querySelector("#umre-fin-refresh");
 		btn.addEventListener("click", function () {
@@ -188,7 +202,7 @@
 	function render_season_skeleton() {
 		return `
 			<div class="umre-fin-panel__header">
-				<div class="umre-fin-panel__title umre-season-fin-panel__title"><span class="dot"></span>${__("Sezonluk Genel Giderler")}</div>
+				<div class="umre-fin-panel__title umre-season-fin-panel__title"><span class="dot"></span><span id="umre-season-title">${__("Ofis Genel Giderleri")}</span></div>
 				<div class="umre-fin-panel__filter umre-season-filters">
 					<button type="button" class="umre-fin-panel__refresh" id="umre-season-refresh">${__("Yenile")}</button>
 				</div>
@@ -205,7 +219,7 @@
 			</div>
 			<div id="umre-season-items"></div>
 			<div class="umre-fin-section">
-				<div class="umre-fin-section__title">${__("Genel Gider Grafikleri")}</div>
+				<div class="umre-fin-section__title">${__("Gider Grafikleri")}</div>
 				<div class="umre-fin-section__rule"></div>
 			</div>
 			<div class="umre-fin-cost umre-season-charts">
@@ -235,120 +249,142 @@
 	function refresh_season() {
 		const sp = document.getElementById(SEASON_PANEL_ID);
 		if (!sp) return;
-		const requestedSeason = _state.season;
+		const seq = ++_season_state.request_seq;
+		const tour = _state.tour || "";
 		sp.classList.add("umre-fin-loading");
-		frappe.call({
-			method: SEASON_ENDPOINT,
-			args: { filters: { season: requestedSeason, tour: _state.tour || "" } },
-			freeze: false
-		}).then((r) => {
-			sp.classList.remove("umre-fin-loading");
-			const data = r && r.message && r.message.operational_dashboard;
-			console.log("OPERATIONAL DATA", data);
-			if (requestedSeason && requestedSeason !== _state.season) return;
-			if (_state.season && data && data.active_season !== _state.season) return;
-			if (!is_valid_operational_data(data)) {
-				render_empty_operational_dashboard(sp, __("Operasyonel gider verisi eksik. Grafik çizilmeyecek."));
-				return;
-			}
-			render_season_payload(sp, data);
-		}).catch((err) => {
-			sp.classList.remove("umre-fin-loading");
-			console.error("Operational dashboard refresh failed", err);
-			render_empty_operational_dashboard(sp, __("Operasyonel gider verisi alınamadı."));
-		});
+		frappe
+			.call({
+				method: SEASON_ENDPOINT,
+				args: { filters: { season: _state.season, tour: tour } },
+				freeze: false,
+			})
+			.then((r) => {
+				if (seq !== _season_state.request_seq) return;
+				sp.classList.remove("umre-fin-loading");
+				const data = r && r.message && r.message.operational_dashboard;
+				if (!is_valid_operational_data(data)) {
+					render_empty_operational_dashboard(sp, __("Gider verisi eksik. Grafik çizilmeyecek."));
+					return;
+				}
+				render_season_payload(sp, data, tour);
+			})
+			.catch(() => {
+				if (seq !== _season_state.request_seq) return;
+				sp.classList.remove("umre-fin-loading");
+				render_empty_operational_dashboard(sp, __("Gider verisi alınamadı."));
+			});
 	}
 
 	function is_valid_operational_data(data) {
 		return Boolean(
 			data &&
-			Number.isFinite(Number(data.total_expense_usd || 0)) &&
-			Array.isArray(data.by_main_category) &&
-			Array.isArray(data.by_expense_item) &&
-			Array.isArray(data.monthly_trend)
+				Number.isFinite(Number(data.total_expense_usd || 0)) &&
+				Array.isArray(data.by_main_category) &&
+				Array.isArray(data.by_expense_item) &&
+				Array.isArray(data.monthly_trend)
 		);
 	}
 
 	function render_empty_operational_dashboard(sp, message) {
-		sp.querySelector("#umre-season-total").innerHTML = `<div class="umre-fin-empty">${frappe.utils.escape_html(message)}</div>`;
+		sp.querySelector("#umre-season-total").innerHTML = `<div class="umre-fin-empty">${esc(message)}</div>`;
 		sp.querySelector("#umre-season-cards").innerHTML = "";
 		const items = sp.querySelector("#umre-season-items");
 		if (items) items.innerHTML = "";
+		_season_state.chart_cat = destroy_chart(_season_state.chart_cat);
+		_season_state.chart_month = destroy_chart(_season_state.chart_month);
 		sp.querySelector("#umre-season-chart-cat").innerHTML = "";
 		sp.querySelector("#umre-season-chart-month").innerHTML = "";
-		_season_state.chart_cat = null;
-		_season_state.chart_month = null;
 	}
 
-	function render_season_payload(sp, data) {
+	function render_season_payload(sp, data, tour) {
 		const rows = data.by_main_category || [];
 		const items = data.by_expense_item || [];
 		const trend = data.monthly_trend || [];
 		const total = Number(data.total_expense_usd || 0);
-		const selectedSeason = data.active_season || "";
+		const is_tour = data.scope === "tour";
 
-		const hero = sp.querySelector("#umre-season-total");
-		hero.innerHTML = [
-			hero_cell("cost", __("Toplam Gider"), fmt_money(total, "USD"), selectedSeason ? __("Sezon") + ": " + selectedSeason : "")
-		].join("");
+		sp.querySelector("#umre-season-title").textContent = is_tour
+			? __("Tur Ekstra Giderleri")
+			: __("Ofis Genel Giderleri");
+
+		const subtitle = [
+			data.active_season ? __("Sezon") + ": " + data.active_season : "",
+			is_tour ? __("Tur") + ": " + tour : __("Turlara dağıtılmaz"),
+			data.draft_count ? __("{0} taslak gider toplama dahil değil", [data.draft_count]) : "",
+		]
+			.filter(Boolean)
+			.join(" · ");
+		sp.querySelector("#umre-season-total").innerHTML = hero_cell(
+			"cost",
+			is_tour ? __("Tur Ekstra Gider") : __("Toplam Genel Gider"),
+			fmt_money(total, "USD"),
+			subtitle
+		);
 
 		const cards = sp.querySelector("#umre-season-cards");
-		const emptyMsg = __("Bu sezon için onaylı genel gider bulunmuyor.");
-		cards.innerHTML = rows.length ? rows.map((row, idx) => {
-			const value = Number(row.value || 0);
-			const share = total > 0 ? value / total : 0;
-			const color = COST_COLORS[idx % COST_COLORS.length];
-			return `
+		const emptyMsg = is_tour
+			? __("Bu tur için onaylı ekstra gider bulunmuyor.")
+			: __("Bu sezon için onaylı genel gider bulunmuyor.");
+		cards.innerHTML = rows.length
+			? rows
+					.map((row, idx) => {
+						const value = Number(row.value || 0);
+						const share = total > 0 ? value / total : 0;
+						const color = CATEGORY_COLORS[idx % CATEGORY_COLORS.length];
+						return `
 				<div class="umre-fin-cost-card" style="--cost-color:${color}">
-					<div class="umre-fin-cost-card__label">${frappe.utils.escape_html(row.label || __("Kategori"))}</div>
+					<div class="umre-fin-cost-card__label">${esc(row.label || __("Kategori"))}</div>
 					<div class="umre-fin-cost-card__amount">${fmt_money(value, "USD")}</div>
 					<div class="umre-fin-cost-card__share">${fmt_pct(share)}</div>
 				</div>`;
-		}).join("") : `<div class="umre-fin-empty">${emptyMsg}</div>`;
+					})
+					.join("")
+			: `<div class="umre-fin-empty">${emptyMsg}</div>`;
 
 		const itemHost = sp.querySelector("#umre-season-items");
 		if (itemHost) {
-			itemHost.innerHTML = items.length ? `
+			itemHost.innerHTML = items.length
+				? `
 				<div class="frappe-card p-3">
-					${items.map((row) => `
+					${items
+						.map(
+							(row) => `
 						<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:8px 0;border-bottom:1px solid var(--border-color);">
 							<div>
-								<div>${frappe.utils.escape_html(row.label || __("Gider Kalemi"))}</div>
-								<div class="text-muted small">${frappe.utils.escape_html(row.parent_label || "")}</div>
+								<div>${esc(row.label || __("Gider Kalemi"))}</div>
+								<div class="text-muted small">${esc(row.parent_label || "")}</div>
 							</div>
 							<div style="font-weight:700;">${fmt_money(Number(row.value || 0), "USD")}</div>
-						</div>
-					`).join("")}
-				</div>` : `<div class="umre-fin-empty">${emptyMsg}</div>`;
+						</div>`
+						)
+						.join("")}
+				</div>`
+				: `<div class="umre-fin-empty">${emptyMsg}</div>`;
 		}
 
 		const hostCat = sp.querySelector("#umre-season-chart-cat");
+		_season_state.chart_cat = destroy_chart(_season_state.chart_cat);
 		hostCat.innerHTML = "";
-		_season_state.chart_cat = null;
-		const catLabels = rows.map((x) => x.label);
-		const catValues = rows.map((x) => Number(x.value || 0));
-		if (catLabels.length && typeof frappe.Chart === "function") {
+		if (rows.length && typeof frappe.Chart === "function") {
 			_season_state.chart_cat = new frappe.Chart(hostCat, {
 				type: "donut",
-				data: { labels: catLabels, datasets: [{ values: catValues }] },
+				data: { labels: rows.map((x) => x.label), datasets: [{ values: rows.map((x) => Number(x.value || 0)) }] },
 				height: 240,
-				colors: COST_COLORS
+				colors: CATEGORY_COLORS,
 			});
 		} else {
 			hostCat.innerHTML = `<div class="umre-fin-empty">${__("Kayıt yok")}</div>`;
 		}
 
 		const hostM = sp.querySelector("#umre-season-chart-month");
+		_season_state.chart_month = destroy_chart(_season_state.chart_month);
 		hostM.innerHTML = "";
-		_season_state.chart_month = null;
-		const monthLabels = trend.map((x) => x.month);
-		const monthValues = trend.map((x) => Number(x.value || 0));
-		if (monthLabels.length && typeof frappe.Chart === "function") {
+		if (trend.length && typeof frappe.Chart === "function") {
 			_season_state.chart_month = new frappe.Chart(hostM, {
 				type: "line",
-				data: { labels: monthLabels, datasets: [{ name: "USD", values: monthValues }] },
+				data: { labels: trend.map((x) => x.month), datasets: [{ name: "USD", values: trend.map((x) => Number(x.value || 0)) }] },
 				height: 240,
-				colors: ["#0ea5e9"]
+				colors: ["#0ea5e9"],
 			});
 		} else {
 			hostM.innerHTML = `<div class="umre-fin-empty">${__("Trend yok")}</div>`;
@@ -358,361 +394,261 @@
 	function refresh() {
 		const panel = document.getElementById(PANEL_ID);
 		if (!panel) return;
-		const requestedSeason = _state.season;
-		_state.loading = true;
+		const seq = ++_state.request_seq;
 		panel.classList.add("umre-fin-loading");
 
-		frappe.call({
-			method: ENDPOINT,
-			args: { season: requestedSeason, tour: _state.tour || "", _: Date.now() },
-			freeze: false
-		}).then((r) => {
-			_state.loading = false;
-			panel.classList.remove("umre-fin-loading");
-			const data = r && r.message;
-			console.log("DASHBOARD DATA", data);
-			if (requestedSeason && requestedSeason !== _state.season) return;
-			if (_state.season && data && data.selected_season !== _state.season) return;
-			if (!is_valid_dashboard_data(data)) {
-				render_empty_dashboard(panel, __("Dashboard verisi eksik veya boş. Maliyet bileşenleri oluşmadan grafik çizilemez."));
-				return;
-			}
-			_state.last_payload = data;
-			render_payload(panel, data);
-		}).catch((err) => {
-			_state.loading = false;
-			panel.classList.remove("umre-fin-loading");
-			console.error("Umre cost dashboard refresh failed", err);
-			render_empty_dashboard(panel, __("Dashboard verisi alınamadı."));
-		});
+		frappe
+			.call({
+				method: ENDPOINT,
+				args: { season: _state.season, tour: _state.tour || "" },
+				freeze: false,
+			})
+			.then((r) => {
+				// A newer request (season / tour change) owns the panel now.
+				if (seq !== _state.request_seq) return;
+				panel.classList.remove("umre-fin-loading");
+				const data = r && r.message;
+				if (!is_valid_dashboard_data(data)) {
+					render_empty_dashboard(panel, __("Dashboard verisi eksik veya boş."));
+					return;
+				}
+				render_payload(panel, data);
+			})
+			.catch(() => {
+				if (seq !== _state.request_seq) return;
+				panel.classList.remove("umre-fin-loading");
+				render_empty_dashboard(panel, __("Dashboard verisi alınamadı."));
+			});
 	}
 
 	function is_valid_dashboard_data(data) {
 		return Boolean(
 			data &&
-			data.kpis &&
-			Array.isArray(data.cost_breakdown) &&
-			data.performance &&
-			data.meta &&
-			Array.isArray(data.seasons) &&
-			Array.isArray(data.tours)
+				data.kpis &&
+				Array.isArray(data.cost_breakdown) &&
+				data.performance &&
+				data.meta &&
+				Array.isArray(data.seasons) &&
+				Array.isArray(data.tours)
 		);
 	}
 
 	function render_empty_dashboard(panel, message) {
-		panel.querySelector("#umre-fin-hero").innerHTML = `<div class="umre-fin-empty">${frappe.utils.escape_html(message)}</div>`;
+		panel.querySelector("#umre-fin-hero").innerHTML = `<div class="umre-fin-empty">${esc(message)}</div>`;
+		panel.querySelector("#umre-fin-season-result").innerHTML = "";
+		panel.querySelector("#umre-fin-warnings").innerHTML = "";
 		panel.querySelector("#umre-fin-cards").innerHTML = "";
-		panel.querySelector("#umre-fin-chart").innerHTML = `<div class="umre-fin-empty">${frappe.utils.escape_html(message)}</div>`;
+		_state.chart = destroy_chart(_state.chart);
+		panel.querySelector("#umre-fin-chart").innerHTML = `<div class="umre-fin-empty">${esc(message)}</div>`;
 		panel.querySelector("#umre-fin-kpi").innerHTML = "";
-		_state.chart = null;
+	}
+
+	function populate_selectors(panel, p) {
+		_state.season = p.selected_season || "";
+		const seasonSel = panel.querySelector("#umre-fin-season");
+		seasonSel.innerHTML = (p.seasons || [])
+			.map((season) => `<option value="${esc(season.name)}">${esc(season.label || season.name)}</option>`)
+			.join("");
+		seasonSel.value = _state.season;
+
+		const sel = panel.querySelector("#umre-fin-tour");
+		const opts = [`<option value="">${esc(__("Tüm Turlar"))}</option>`].concat(
+			(p.tours || []).map((t) => `<option value="${esc(t.name)}">${esc(t.label || t.name)}</option>`)
+		);
+		sel.innerHTML = opts.join("");
+		const known = (p.tours || []).some((t) => t.name === _state.tour);
+		_state.tour = known ? _state.tour : "";
+		sel.value = _state.tour;
+	}
+
+	function render_warnings(panel, warnings) {
+		const host = panel.querySelector("#umre-fin-warnings");
+		if (!warnings || !warnings.length) {
+			host.innerHTML = "";
+			return;
+		}
+		const items = warnings
+			.map((w) => {
+				const details = Object.entries(w.details || {})
+					.map(([k, v]) => `${esc(k)}: ${fmt_int(v)}`)
+					.join(", ");
+				return `<li><b>${fmt_int(w.count)}</b> ${esc(__("rezervasyon"))} — ${esc(w.message)}${details ? ` <span class="text-muted">(${details})</span>` : ""}</li>`;
+			})
+			.join("");
+		host.innerHTML = `<div class="alert alert-warning" style="margin:8px 0"><ul style="margin:0;padding-left:18px">${items}</ul></div>`;
 	}
 
 	function render_payload(panel, p) {
 		const k = p.kpis || {};
-		const rows = (p.cost_breakdown || []).map((row, idx) => ({
-			label: row.label || __("Maliyet"),
-			value: Number(row.value || 0),
-			color: COST_COLORS[idx % COST_COLORS.length]
-		}));
 		const perf = p.performance || {};
+		const coll = p.collections || {};
 		const meta = p.meta || {};
 		const currency = p.currency || "USD";
-		const financialValid = p.financial_data_valid !== false;
-		const financialValue = (value) => financialValid ? fmt_money(value, currency) : "—";
-		_state.season = p.selected_season || "";
+		const rows = (p.cost_breakdown || []).map((row) => ({
+			label: row.label || __("Maliyet"),
+			value: Number(row.value || 0),
+			color: row.color || "#8c8c8c",
+		}));
 
-		const seasonSel = panel.querySelector("#umre-fin-season");
-		seasonSel.innerHTML = (p.seasons || []).map((season) => (
-			`<option value="${frappe.utils.escape_html(season.name || "")}">${frappe.utils.escape_html(season.label || season.name || "")}</option>`
-		)).join("");
-		seasonSel.value = _state.season;
+		populate_selectors(panel, p);
 
-		// Tour selector population (preserve current selection).
-		const sel = panel.querySelector("#umre-fin-tour");
-		const current = _state.tour;
-		const opts = [`<option value="">${frappe.utils.escape_html(__("Tüm Turlar"))}</option>`].concat(
-			(p.tours || []).map((t) => `<option value="${frappe.utils.escape_html(t.name || "")}">${frappe.utils.escape_html(t.label || t.name || "")}</option>`)
-		);
-		sel.innerHTML = opts.join("");
-		sel.value = current;
-
-		// Hero strip.
-		const hero = panel.querySelector("#umre-fin-hero");
-		const profit_loss = (k.net_profit || 0) < 0 ? "is-loss" : "";
-		hero.innerHTML = [
-			hero_cell("revenue", __("Gelir"), fmt_money(k.total_revenue, currency), ""),
-			hero_cell("cost", __("Toplam Maliyet"), financialValue(k.total_cost),
-				`${__("Toplam")}: ${fmt_int(meta.total_count)} · ${__("UMRECI")}: ${fmt_int(meta.umreci_count)} · ${__("Diğer")}: ${fmt_int(meta.non_umreci_count)}`),
-			hero_cell("profit " + profit_loss, __("Net Kar"), financialValue(k.net_profit), "")
+		const profit_class = Number(k.tour_profit || 0) < 0 ? "is-loss" : "";
+		panel.querySelector("#umre-fin-hero").innerHTML = [
+			hero_cell(
+				"revenue",
+				__("Net Satış"),
+				fmt_money(k.net_sales, currency),
+				`${__("Brüt")}: ${fmt_money(k.gross_sales, currency)} · ${__("Komisyon")}: ${fmt_money(k.commission, currency)}`
+			),
+			hero_cell(
+				"cost",
+				__("Toplam Maliyet"),
+				fmt_money(k.total_cost, currency),
+				`${__("Yolcu")}: ${fmt_money(k.passenger_cost, currency)} · ${__("Tur ekstra")}: ${fmt_money(k.tour_extra_expense, currency)}`
+			),
+			hero_cell(
+				"profit " + profit_class,
+				__("Tur Kârı"),
+				fmt_money(k.tour_profit, currency),
+				`${__("Yolcu")}: ${fmt_int(meta.total_count)} · ${__("Ücretli")}: ${fmt_int(meta.umreci_count)} · ${__("Ücretsiz")}: ${fmt_int(meta.non_umreci_count)}`
+			),
 		].join("");
 
-		// Cost cards come directly from persisted rule records.
-		const cards = panel.querySelector("#umre-fin-cards");
-		const total = rows.reduce((sum, row) => sum + Number(row.value || 0), 0);
-		cards.innerHTML = rows.map((c) => {
-			const amt = Number(c.value || 0);
-			const share = total > 0 ? (amt / total) : 0;
-			const zero_class = amt > 0 ? "" : " is-zero";
-			return `
-				<div class="umre-fin-cost-card${zero_class}" style="--cost-color:${c.color}">
-					<div class="umre-fin-cost-card__label">${frappe.utils.escape_html(c.label)}</div>
-					<div class="umre-fin-cost-card__amount">${fmt_money(amt, currency)}</div>
-					<div class="umre-fin-cost-card__share">${fmt_pct(share)}</div>
-				</div>`;
-		}).join("");
-		if ((p.integrity_warnings || []).length) {
-			cards.insertAdjacentHTML("afterbegin", `<div class="alert alert-warning">${frappe.utils.escape_html(
-				financialValid
-					? __("Veri bütünlüğü uyarısı: {0} rezervasyon kaydını kontrol edin.", [p.integrity_warnings.length])
-					: __("Finansal toplamlar gizlendi: eksik, yinelenen veya USD dışı maliyet bileşenleri var.")
-			)}</div>`);
+		const seasonHost = panel.querySelector("#umre-fin-season-result");
+		if (k.season_result === null || k.season_result === undefined) {
+			seasonHost.innerHTML = "";
+		} else {
+			const season_class = Number(k.season_result || 0) < 0 ? "is-loss" : "";
+			seasonHost.innerHTML = [
+				hero_cell("cost", __("Ofis Genel Gideri"), fmt_money(k.overhead, currency), __("Turlara dağıtılmaz")),
+				hero_cell(
+					"profit " + season_class,
+					__("Sezon Sonucu"),
+					fmt_money(k.season_result, currency),
+					__("Tur kârları toplamı − genel gider")
+				),
+			].join("");
 		}
 
-		// Doughnut.
-		render_chart(panel, p);
+		render_warnings(panel, p.warnings);
 
-		// KPIs.
-		const kpi = panel.querySelector("#umre-fin-kpi");
-		const kbk_cls = (perf.profit_per_person || 0) < 0 ? "is-loss" : "";
-		kpi.innerHTML = [
-			kpi_cell("cost", __("Kişi Başı Maliyet"), financialValue(perf.cost_per_person)),
-			kpi_cell("profit " + kbk_cls, __("Kişi Başı Kar"), financialValue(perf.profit_per_person)),
-			kpi_cell("ratio", __("Yemek Oranı"), financialValid ? fmt_pct_value(perf.food_ratio) : "—")
+		const total = rows.reduce((sum, row) => sum + row.value, 0);
+		panel.querySelector("#umre-fin-cards").innerHTML = rows
+			.map((c) => {
+				const share = total > 0 ? c.value / total : 0;
+				return `
+				<div class="umre-fin-cost-card${c.value > 0 ? "" : " is-zero"}" style="--cost-color:${c.color}">
+					<div class="umre-fin-cost-card__label">${esc(c.label)}</div>
+					<div class="umre-fin-cost-card__amount">${fmt_money(c.value, currency)}</div>
+					<div class="umre-fin-cost-card__share">${fmt_pct(share)}</div>
+				</div>`;
+			})
+			.join("");
+
+		render_chart(panel, rows, currency);
+
+		const per_person_class = Number(perf.profit_per_paying_passenger || 0) < 0 ? "is-loss" : "";
+		panel.querySelector("#umre-fin-kpi").innerHTML = [
+			kpi_cell("profit " + per_person_class, __("Ücretli Yolcu Başı Kâr"), fmt_money(perf.profit_per_paying_passenger, currency)),
+			kpi_cell("cost", __("Yolcu Başı Maliyet"), fmt_money(perf.cost_per_person, currency)),
+			kpi_cell("ratio", __("Yemek Oranı"), fmt_pct_value(perf.food_ratio)),
+			kpi_cell("revenue", __("Tahsil Edilen"), fmt_money(coll.collected, currency)),
+			kpi_cell("cost", __("Açık Alacak"), fmt_money(coll.open_receivable, currency)),
+			kpi_cell("ratio", __("Excel'e Göre Ödenen"), fmt_money(coll.excel_reported, currency)),
 		].join("");
 	}
 
 	function hero_cell(kind, label, value, sub) {
 		return `
 			<div class="umre-fin-hero__cell umre-fin-hero__cell--${kind}">
-				<div class="umre-fin-hero__label">${frappe.utils.escape_html(label)}</div>
+				<div class="umre-fin-hero__label">${esc(label)}</div>
 				<div class="umre-fin-hero__value">${value}</div>
-				<div class="umre-fin-hero__sub">${frappe.utils.escape_html(sub)}</div>
+				<div class="umre-fin-hero__sub">${esc(sub)}</div>
 			</div>`;
 	}
 
 	function kpi_cell(kind, label, value) {
 		return `
 			<div class="umre-fin-kpi__cell umre-fin-kpi__cell--${kind}">
-				<div class="umre-fin-kpi__label">${frappe.utils.escape_html(label)}</div>
+				<div class="umre-fin-kpi__label">${esc(label)}</div>
 				<div class="umre-fin-kpi__value">${value}</div>
 			</div>`;
 	}
 
-	function render_chart(panel, p) {
+	function render_chart(panel, rows, currency) {
 		const host = panel.querySelector("#umre-fin-chart");
-		host.innerHTML = ""; // reset
-		const rows = p.cost_breakdown || [];
-		const labels = rows.map((x) => x.label);
-		const values = rows.map((x) => Number(x.value || 0));
-		if (!labels.length) {
+		_state.chart = destroy_chart(_state.chart);
+		host.innerHTML = "";
+		const values = rows.map((x) => x.value);
+		const shareTot = values.reduce((sum, value) => sum + value, 0);
+		if (!rows.length || shareTot <= 0) {
 			host.innerHTML = `<div class="umre-fin-empty">${__("Maliyet bileşeni bulunamadı.")}</div>`;
-			_state.chart = null;
 			return;
 		}
-		// Frappe Charts is bundled with desk; defer to it.
 		if (typeof frappe.Chart !== "function") {
 			host.innerHTML = `<div class="umre-fin-empty">${__("Grafik kütüphanesi yüklenmedi.")}</div>`;
 			return;
 		}
-		const shareTot = values.reduce((sum, value) => sum + value, 0);
-		const currency = p.currency || "USD";
 		_state.chart = new frappe.Chart(host, {
 			type: "donut",
-			data: {
-				labels: labels,
-				datasets: [{ values: values }]
-			},
+			data: { labels: rows.map((x) => x.label), datasets: [{ values: values }] },
 			height: 280,
-			colors: COST_COLORS,
+			colors: rows.map((x) => x.color),
 			truncateLegends: false,
 			tooltipOptions: {
 				formatTooltipY: (d) => {
 					const v = Number(d || 0);
 					const pct = shareTot > 0 ? ((v / shareTot) * 100).toFixed(1) : "0.0";
 					return fmt_money(v, currency) + " (" + pct + "%)";
-				}
-			}
+				},
+			},
 		});
 	}
-
-	// --- Scroll Restoration Module ---
-	const _scroll_restoration = {
-		should_restore: false,
-		debounce_timeout: null,
-
-		init() {
-			console.log("[ScrollRestoration] Initializing Scroll Restoration Module...");
-			
-			// 1. Scroll hareketlerini debounced olarak kaydet
-			const save_scroll = () => {
-				if (this.debounce_timeout) clearTimeout(this.debounce_timeout);
-				this.debounce_timeout = setTimeout(() => {
-					if (typeof frappe === "undefined" || !frappe.get_route_str) return;
-					const route = frappe.get_route_str();
-					if (route) {
-						const scroll_val = this.get_scroll_position();
-						sessionStorage.setItem('frappe_scroll_' + route, scroll_val);
-						console.log("[ScrollRestoration] Saved scroll position for route [" + route + "]: " + scroll_val);
-					}
-				}, 100);
-			};
-
-			window.addEventListener('scroll', save_scroll, { passive: true });
-			// Ayrıca olası iç div scroll'larını yakalamak için capture (bubble öncesi) aşamasında dinle
-			document.addEventListener('scroll', save_scroll, { passive: true, capture: true });
-
-			// 2. Geri/İleri buton hareketini yakala (Suppression'ı aşmak için capture aşamasında dinle)
-			window.addEventListener('popstate', () => {
-				console.log("[ScrollRestoration] POPSTATE event captured! Navigation detected.");
-				this.should_restore = true;
-			}, { capture: true });
-
-			// Yedek olarak window.onpopstate'i de dinleyelim
-			const original_onpopstate = window.onpopstate;
-			window.onpopstate = (event) => {
-				console.log("[ScrollRestoration] window.onpopstate triggered!");
-				this.should_restore = true;
-				if (typeof original_onpopstate === 'function') {
-					original_onpopstate.apply(window, [event]);
-				}
-			};
-
-			// 3. Frappe sayfa değişimlerinde scroll restorasyonunu tetikle
-			$(document).on("page-change", () => {
-				console.log("[ScrollRestoration] page-change event triggered.");
-				this.trigger_restore();
-			});
-			if (frappe.router && frappe.router.on) {
-				frappe.router.on("change", () => {
-					console.log("[ScrollRestoration] frappe.router 'change' event triggered.");
-					this.trigger_restore();
-				});
-			}
-		},
-
-		get_scroll_position() {
-			let max_scroll = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
-			const containers = ['.layout-main-section', '.layout-main-section-wrapper', '.page-container', '#page-workspace', '.page-body'];
-			for (const selector of containers) {
-				const el = document.querySelector(selector);
-				if (el && el.scrollTop > max_scroll) {
-					max_scroll = el.scrollTop;
-				}
-			}
-			return max_scroll;
-		},
-
-		set_scroll_position(target_scroll) {
-			window.scrollTo(0, target_scroll);
-			const containers = ['.layout-main-section', '.layout-main-section-wrapper', '.page-container', '#page-workspace', '.page-body'];
-			let applied = false;
-			for (const selector of containers) {
-				const el = document.querySelector(selector);
-				if (el) {
-					el.scrollTop = target_scroll;
-					applied = true;
-				}
-			}
-			console.log("[ScrollRestoration] Applied scroll position: " + target_scroll + " (Containers applied: " + applied + ")");
-		},
-
-		trigger_restore() {
-			console.log("[ScrollRestoration] trigger_restore checks: should_restore=" + this.should_restore);
-			if (!this.should_restore) return;
-			const route = frappe.get_route_str();
-			if (!route) return;
-
-			const saved = sessionStorage.getItem('frappe_scroll_' + route);
-			console.log("[ScrollRestoration] Found saved scroll for [" + route + "]: " + saved);
-			if (saved) {
-				const target_scroll = parseInt(saved, 10);
-				if (target_scroll > 0) {
-					this.attempt_scroll(route, target_scroll, 0);
-				}
-			}
-			this.should_restore = false; // Tüketildi
-		},
-
-		attempt_scroll(route, target_scroll, attempts) {
-			// Rota değiştiyse veya 30 denemeyi (1.5 saniye) geçtiysek iptal et
-			if (frappe.get_route_str() !== route) {
-				console.log("[ScrollRestoration] Scroll attempt aborted because route changed to: " + frappe.get_route_str());
-				return;
-			}
-			if (attempts > 30) {
-				console.log("[ScrollRestoration] Scroll attempt aborted after 30 attempts.");
-				return;
-			}
-
-			this.set_scroll_position(target_scroll);
-
-			// Sayfa henüz tam render edilmediyse ve hedeflenen scroll'a ulaşamadıysak tekrar dene
-			const current = this.get_scroll_position();
-			console.log("[ScrollRestoration] Restore attempt [" + attempts + "] - Current: " + current + " / Target: " + target_scroll);
-			if (Math.abs(current - target_scroll) > 8) {
-				setTimeout(() => {
-					this.attempt_scroll(route, target_scroll, attempts + 1);
-				}, 50);
-			} else {
-				console.log("[ScrollRestoration] Scroll successfully restored to: " + current);
-			}
-		}
-	};
 
 	// --- bootstrap -----------------------------------------------------
 
 	function bootstrap() {
-		// Initialize scroll restoration
-		_scroll_restoration.init();
-
-		// Mount on every route change AND on initial DOM ready.
 		$(document).on("app_ready page-change", ensure_mounted);
-
-		// Frappe v14 emits `change` on its router.
 		if (frappe.router && frappe.router.on) {
 			frappe.router.on("change", ensure_mounted);
 		}
 
-		// Watch for workspace re-renders (Frappe re-mounts the codex editor
-		// when switching workspaces); MutationObserver is the safety net.
+		// Workspace re-renders replace the editor DOM; re-mount at most once per frame.
+		let mount_scheduled = false;
 		const obs = new MutationObserver(() => {
-			ensure_mounted();
+			if (mount_scheduled) return;
+			mount_scheduled = true;
+			window.requestAnimationFrame(() => {
+				mount_scheduled = false;
+				ensure_mounted();
+			});
 		});
 		obs.observe(document.body, { childList: true, subtree: true });
 
-		// Realtime: refresh on any cost-component dirty signal. Debounce
-		// because component generation fires 6 events per booking.
 		if (frappe.realtime && frappe.realtime.on) {
 			frappe.realtime.on("umre_cost_dashboard_dirty", () => {
+				if (!document.getElementById(PANEL_ID)) return;
 				const btn = document.getElementById("umre-fin-refresh");
 				if (btn) btn.classList.add("is-stale");
 				schedule_refresh(800);
 			});
 			frappe.realtime.on("umre_operational_expense_dirty", () => {
+				if (!document.getElementById(SEASON_PANEL_ID)) return;
 				schedule_season_refresh(500);
+				schedule_refresh(800);
 			});
 		}
 
-		// Refresh when a rule or tour selection source is saved in Desk.
-		$(document).on("after_save", function (_evt, doc) {
+		// Frappe triggers `save` on document after a form save.
+		$(document).on("save", function (_evt, doc) {
 			if (!doc) return;
-			if (
-				doc.doctype === "Umre Tour" ||
-				doc.doctype === "Tour Hotel Cost Rule" ||
-				doc.doctype === "Tour Airfare Cost Rule" ||
-				doc.doctype === "Tour Visa Cost Rule" ||
-				doc.doctype === "Tour Diyanet Card Rule" ||
-				doc.doctype === "Meal Cost Rule" ||
-				doc.doctype === "Other Cost Rule"
-			) {
-				schedule_refresh(500);
-			}
+			if (RULE_DOCTYPES.has(doc.doctype)) schedule_refresh(500);
 			if (doc.doctype === "Operational Expense") {
 				schedule_season_refresh(400);
+				schedule_refresh(600);
 			}
 		});
 
-		// Initial mount attempt.
 		ensure_mounted();
 	}
 

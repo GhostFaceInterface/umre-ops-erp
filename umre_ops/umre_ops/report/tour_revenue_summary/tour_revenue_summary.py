@@ -1,30 +1,29 @@
 # Copyright (c) 2026, Sermed Turizm and contributors
 # For license information, please see license.txt
 """
-Tour Revenue Summary — derives every cost number from `Cost Component` rows.
+Tour Revenue Summary — tour and season P&L in USD.
 
-Source of truth
----------------
-* Revenue:
-    UMRECI:     `revenue = ucret`
-    Non-UMRECI: `revenue = 0`
-* Cost: SUM over `Cost Component.amount` for every row attached to the booking.
-* Profit: `revenue - cost` (accrual basis).
+Every number comes from ``pnl_service.get_season_pnl`` (the same calculation as
+the Umre Operasyon Paneli):
 
-Legacy `Umre Booking.otel_maliyeti / ucak_maliyeti / vize_maliyeti / diyanet_maliyeti / toplam_maliyet`
-columns are NEVER read here. They are deprecated and held only for historical
-backfill diff inspection.
+    net satış  = Σ ucret − Σ kms                     (UMRECI)
+    maliyet    = Σ Cost Component + tur ekstra gider (Operational Expense.related_tour)
+    tur kârı   = net satış − maliyet
+    sezon sonucu = Σ tur kârı − ofis genel gideri    (summary, no tour filter)
+
+Only tour rows carry the main amount columns. Status and cost-type rows use the
+separate "Detay" columns, so exporting and summing a column never double counts.
 """
 from __future__ import annotations
 
-from collections import defaultdict
-
 import frappe
 from frappe import _
-from frappe.utils import flt
+from frappe.utils import escape_html, flt
+
+from umre_ops.umre_ops.services.pnl_service import get_season_pnl
+from umre_ops.umre_ops.services.season_service import get_active_season
 
 DEFAULT_CURRENCY = "USD"
-PAYING_STATUS = "UMRECI"
 INDENT_TOUR = 0
 INDENT_SECTION = 1
 INDENT_DETAIL = 2
@@ -32,34 +31,29 @@ INDENT_DETAIL = 2
 
 def execute(filters=None):
 	filters = frappe._dict(filters or {})
-	columns = get_columns()
-	data = _remove_artificial_total_rows(get_data(filters))
-	chart = get_chart(data)
-	report_summary = get_report_summary(data)
-	return columns, data, None, chart, report_summary
-
-
-def _remove_artificial_total_rows(data: list[dict]) -> list[dict]:
-	return [
-		row
-		for row in data
-		if not (
-			str(row.get("tur") or row.get("tour") or "").lower() == "toplam"
-			or str(row.get("satir_turu") or row.get("row_type") or "").lower() == "toplam"
-		)
-	]
+	season = filters.get("season") or get_active_season(required=True)
+	pnl = get_season_pnl(season, filters.get("tour") or None)
+	data = get_data(pnl)
+	return get_columns(), data, _warnings_message(pnl), get_chart(pnl), get_report_summary(pnl)
 
 
 def get_columns() -> list[dict]:
-	currency_options = {"options": "currency"}
+	money = {"fieldtype": "Currency", "options": "currency", "width": 125}
 	return [
-		{"label": _("Tur"), "fieldname": "tour", "fieldtype": "Data", "width": 280},
-		{"label": _("Kişi Sayısı"), "fieldname": "kisi_sayisi", "fieldtype": "Int", "width": 100},
-		{"label": _("Gelir"), "fieldname": "gelir", "fieldtype": "Currency", "width": 130, **currency_options},
-		{"label": _("Tahsil Edilen"), "fieldname": "tahsil_edilen", "fieldtype": "Currency", "width": 135, **currency_options},
-		{"label": _("Kalan Alacak"), "fieldname": "kalan_alacak", "fieldtype": "Currency", "width": 135, **currency_options},
-		{"label": _("Toplam Maliyet"), "fieldname": "toplam_maliyet", "fieldtype": "Currency", "width": 140, **currency_options},
-		{"label": _("Net Kar"), "fieldname": "net_kar", "fieldtype": "Currency", "width": 130, **currency_options},
+		{"label": _("Tur"), "fieldname": "tour", "fieldtype": "Data", "width": 260},
+		{"label": _("Kişi"), "fieldname": "kisi_sayisi", "fieldtype": "Int", "width": 70},
+		{"label": _("Brüt Satış"), "fieldname": "brut_satis", **money},
+		{"label": _("Komisyon"), "fieldname": "komisyon", **money},
+		{"label": _("Net Satış"), "fieldname": "net_satis", **money},
+		{"label": _("Yolcu Maliyeti"), "fieldname": "yolcu_maliyeti", **money},
+		{"label": _("Tur Ekstra Gider"), "fieldname": "tur_ekstra_gider", **money},
+		{"label": _("Toplam Maliyet"), "fieldname": "toplam_maliyet", **money},
+		{"label": _("Tur Kârı"), "fieldname": "tur_kari", **money},
+		{"label": _("Tahsil Edilen"), "fieldname": "tahsil_edilen", **money},
+		{"label": _("Açık Alacak"), "fieldname": "acik_alacak", **money},
+		{"label": _("Excel'e Göre Ödenen"), "fieldname": "excel_bildirilen", **money},
+		{"label": _("Detay Kişi"), "fieldname": "detay_kisi", "fieldtype": "Int", "width": 90},
+		{"label": _("Detay Tutar"), "fieldname": "detay_tutar", **money},
 		{"label": _("Currency"), "fieldname": "currency", "fieldtype": "Link", "options": "Currency", "hidden": 1},
 		{"label": _("Tour Key"), "fieldname": "tour_key", "fieldtype": "Data", "hidden": 1},
 		{"label": _("Parent"), "fieldname": "parent_tour_key", "fieldtype": "Data", "hidden": 1},
@@ -67,219 +61,116 @@ def get_columns() -> list[dict]:
 	]
 
 
-# ---------------------------------------------------------------------------
-# Data assembly
-# ---------------------------------------------------------------------------
+TOUR_COLUMNS = (
+	"kisi_sayisi", "brut_satis", "komisyon", "net_satis", "yolcu_maliyeti", "tur_ekstra_gider",
+	"toplam_maliyet", "tur_kari", "tahsil_edilen", "acik_alacak", "excel_bildirilen",
+)
 
-def _empty_bucket() -> dict:
+
+def _cost_type_labels() -> dict[str, str]:
 	return {
-		"kisi_sayisi": 0,
-		"gelir": 0.0,
-		"tahsil_edilen": 0.0,
-		"booking_cost": 0.0,
-		"statuses": {},               # by statu code
-		"components": defaultdict(float),  # by Cost Type code
+		row["name"]: row.get("cost_type_name") or row["name"]
+		for row in frappe.get_all("Cost Type", fields=["name", "cost_type_name"], limit_page_length=0)
 	}
 
 
-def _get_bookings(filters) -> list[dict]:
-	booking_filters = {}
-	if filters.get("tour"):
-		booking_filters["tur"] = filters.tour
-	return frappe.db.get_all(
-		"Umre Booking",
-		fields=["name", "tur", "statu", "ucret", "odenen", "manual_cost"],
-		filters=booking_filters,
-		order_by="tur asc, statu asc",
-	)
-
-
-def _get_components_for(booking_names: list[str]) -> dict[str, list[dict]]:
-	"""Return components keyed by booking name for a batch of bookings."""
-	if not booking_names:
-		return {}
-	rows = frappe.db.sql(
-		"""
-		SELECT booking, cost_type, amount, currency
-		FROM `tabCost Component`
-		WHERE booking IN %(names)s
-		""",
-		{"names": tuple(booking_names)},
-		as_dict=True,
-	)
-	out: dict[str, list[dict]] = defaultdict(list)
-	for r in rows:
-		out[r["booking"]].append(r)
-	return out
-
-
-def _get_cost_type_order() -> list[tuple[str, str]]:
-	"""Return (code, display_name) for all Cost Type rows ordered by sort_order."""
-	rows = frappe.get_all(
-		"Cost Type",
-		fields=["name as code", "cost_type_name", "sort_order"],
-		order_by="sort_order asc, name asc",
-	)
-	return [(r["code"], r["cost_type_name"] or r["code"]) for r in rows]
-
-
-def get_data(filters) -> list[dict]:
-	bookings = _get_bookings(filters)
-	if not bookings:
-		return []
-
-	components_by_booking = _get_components_for([b["name"] for b in bookings])
-	cost_type_order = _get_cost_type_order()
-
-	by_tour: dict[str, dict] = {}
-	for booking in bookings:
-		tour = booking.get("tur") or _("Tursuz")
-		bucket = by_tour.setdefault(tour, _empty_bucket())
-		statu = (booking.get("statu") or PAYING_STATUS).strip() or PAYING_STATUS
-		is_umreci = statu == PAYING_STATUS
-		ucret = flt(booking.get("ucret") or 0)
-		odenen = flt(booking.get("odenen") or 0)
-
-		comps = components_by_booking.get(booking["name"], [])
-		comp_total = flt(sum(flt(c["amount"] or 0) for c in comps))
-
-		bucket["kisi_sayisi"] += 1
-		# Every passenger consumes tour services. Revenue/collection remain UMRECI-only,
-		# but System Rules costs for HOCA/family/company statuses must reduce tour profit.
-		bucket["booking_cost"] += comp_total
-		if is_umreci:
-			bucket["gelir"] += ucret
-			bucket["tahsil_edilen"] += odenen
-
-		st = bucket["statuses"].setdefault(
-			statu,
-			{"kisi_sayisi": 0, "gelir": 0.0, "maliyet": 0.0, "net_etki": 0.0},
-		)
-		st["kisi_sayisi"] += 1
-		if is_umreci:
-			st["gelir"] += ucret
-			st["maliyet"] += comp_total
-			st["net_etki"] += ucret - comp_total
-		else:
-			st["maliyet"] += comp_total
-			st["net_etki"] += -comp_total
-
-		for c in comps:
-			bucket["components"][c["cost_type"]] = flt(
-				bucket["components"][c["cost_type"]] + flt(c["amount"] or 0)
-			)
-
+def get_data(pnl: dict) -> list[dict]:
+	labels = _cost_type_labels()
 	data: list[dict] = []
-	for tour in sorted(by_tour):
-		bucket = by_tour[tour]
-		total_cost = flt(bucket["booking_cost"])
-		net_kar = flt(bucket["gelir"] - total_cost)
-		kalan = flt(bucket["gelir"] - bucket["tahsil_edilen"])
-
-		sum_net_effects = sum(s["net_etki"] for s in bucket["statuses"].values())
-		if abs(net_kar - sum_net_effects) > 0.01:
-			frappe.throw(
-				_("Financial inconsistency: top profit {0} does not match sum of status net effects {1}").format(
-					net_kar, sum_net_effects
-				)
-			)
-
+	for tour in pnl["tours"]:
+		key = tour["tour"]
 		data.append({
-			"tour": tour,
-			"tour_key": tour,
+			"tour": tour["label"],
+			"tour_key": key,
 			"parent_tour_key": "",
 			"row_kind": "tour",
 			"indent": INDENT_TOUR,
-			"kisi_sayisi": bucket["kisi_sayisi"],
-			"gelir": bucket["gelir"],
-			"tahsil_edilen": bucket["tahsil_edilen"],
-			"kalan_alacak": kalan,
-			"toplam_maliyet": total_cost,
-			"net_kar": net_kar,
 			"currency": DEFAULT_CURRENCY,
+			**{column: tour[column] for column in TOUR_COLUMNS},
 		})
-
-		# Statü Analizi
-		data.append({
-			"tour": _("Statü Analizi"),
-			"tour_key": f"{tour}::section::status",
-			"parent_tour_key": tour,
-			"row_kind": "section",
-			"indent": INDENT_SECTION,
-			"currency": DEFAULT_CURRENCY,
-		})
-		for status_name in sorted(bucket["statuses"]):
-			st = bucket["statuses"][status_name]
-			data.append({
-				"tour": status_name,
-				"tour_key": f"{tour}::status::{status_name}",
-				"parent_tour_key": f"{tour}::section::status",
-				"row_kind": "status",
-				"indent": INDENT_DETAIL,
-				"kisi_sayisi": st["kisi_sayisi"],
-				"gelir": flt(st["gelir"]),
-				"toplam_maliyet": flt(st["maliyet"]),
-				"net_kar": flt(st["net_etki"]),
-				"currency": DEFAULT_CURRENCY,
-			})
-
-		# Maliyet Dağılımı (Cost Component breakdown)
-		data.append({
-			"tour": _("Maliyet Dağılımı"),
-			"tour_key": f"{tour}::section::cost",
-			"parent_tour_key": tour,
-			"row_kind": "section",
-			"indent": INDENT_SECTION,
-			"currency": DEFAULT_CURRENCY,
-		})
-		for code, display in cost_type_order:
-			amt = flt(bucket["components"].get(code, 0.0))
-			# Skip if neither this tour has any of this type, nor it is a
-			# canonical column (we keep canonical rows even at 0 for legibility).
-			data.append({
-				"tour": display,
-				"tour_key": f"{tour}::cost::{code}",
-				"parent_tour_key": f"{tour}::section::cost",
-				"row_kind": "cost",
-				"indent": INDENT_DETAIL,
-				"toplam_maliyet": amt,
-				"currency": DEFAULT_CURRENCY,
-			})
-
+		data.append(_section(key, "status", _("Statü Analizi (net etki)")))
+		for status_name in sorted(tour["by_status"]):
+			status = tour["by_status"][status_name]
+			data.append(_detail(
+				key, "status", status_name, status_name,
+				people=status["kisi_sayisi"], amount=status["net_etki"],
+			))
+		data.append(_section(key, "cost", _("Maliyet Dağılımı")))
+		for code, amount in tour["maliyet_by_type"].items():
+			data.append(_detail(key, "cost", code, labels.get(code, code), amount=amount))
+		if tour["tur_ekstra_gider"]:
+			data.append(_detail(key, "cost", "TOUR_EXTRA", _("Tur Ekstra Gider"), amount=tour["tur_ekstra_gider"]))
 	return data
 
 
-def _tour_parent_rows(data: list[dict]) -> list[dict]:
-	return [row for row in data if row.get("row_kind") == "tour"]
+def _section(tour_key: str, kind: str, label: str) -> dict:
+	return {
+		"tour": label,
+		"tour_key": f"{tour_key}::section::{kind}",
+		"parent_tour_key": tour_key,
+		"row_kind": "section",
+		"indent": INDENT_SECTION,
+		"currency": DEFAULT_CURRENCY,
+	}
 
 
-def get_chart(data: list[dict]) -> dict:
-	rows = _tour_parent_rows(data)[:20]
+def _detail(tour_key: str, kind: str, code: str, label: str, *, amount: float, people: int | None = None) -> dict:
+	row = {
+		"tour": label,
+		"tour_key": f"{tour_key}::{kind}::{code}",
+		"parent_tour_key": f"{tour_key}::section::{kind}",
+		"row_kind": kind,
+		"indent": INDENT_DETAIL,
+		"detay_tutar": flt(amount, 2),
+		"currency": DEFAULT_CURRENCY,
+	}
+	if people is not None:
+		row["detay_kisi"] = people
+	return row
+
+
+def get_chart(pnl: dict) -> dict:
+	rows = pnl["tours"][:20]
 	return {
 		"data": {
-			"labels": [row["tour"] for row in rows],
+			"labels": [row["label"] for row in rows],
 			"datasets": [
-				{"name": _("Gelir"), "values": [row["gelir"] for row in rows]},
-				{"name": _("Tahsil Edilen"), "values": [row["tahsil_edilen"] for row in rows]},
+				{"name": _("Net Satış"), "values": [row["net_satis"] for row in rows]},
 				{"name": _("Toplam Maliyet"), "values": [row["toplam_maliyet"] for row in rows]},
-				{"name": _("Net Kar"), "values": [row["net_kar"] for row in rows]},
+				{"name": _("Tur Kârı"), "values": [row["tur_kari"] for row in rows]},
 			],
 		},
 		"type": "bar",
 	}
 
 
-def get_report_summary(data: list[dict]) -> list[dict]:
-	rows = _tour_parent_rows(data)
-	revenue = sum(flt(r["gelir"]) for r in rows)
-	paid = sum(flt(r["tahsil_edilen"]) for r in rows)
-	cost = sum(flt(r["toplam_maliyet"]) for r in rows)
-	profit = sum(flt(r["net_kar"]) for r in rows)
-	remaining = sum(flt(r["kalan_alacak"]) for r in rows)
-	return [
-		{"value": revenue, "label": _("Gelir"), "datatype": "Currency", "currency": DEFAULT_CURRENCY, "indicator": "Blue"},
-		{"value": paid, "label": _("Tahsil Edilen"), "datatype": "Currency", "currency": DEFAULT_CURRENCY, "indicator": "Green"},
-		{"value": cost, "label": _("Toplam Maliyet"), "datatype": "Currency", "currency": DEFAULT_CURRENCY, "indicator": "Orange"},
-		{"value": profit, "label": _("Net Kar"), "datatype": "Currency", "currency": DEFAULT_CURRENCY, "indicator": "Green" if profit >= 0 else "Red"},
-		{"value": remaining, "label": _("Kalan"), "datatype": "Currency", "currency": DEFAULT_CURRENCY, "indicator": "Orange"},
+def get_report_summary(pnl: dict) -> list[dict]:
+	totals = pnl["totals"]
+
+	def card(value, label, indicator):
+		return {"value": value, "label": label, "datatype": "Currency", "currency": DEFAULT_CURRENCY, "indicator": indicator}
+
+	cards = [
+		card(totals["net_satis"], _("Net Satış"), "Blue"),
+		card(totals["toplam_maliyet"], _("Toplam Maliyet"), "Orange"),
+		card(totals["tur_kari"], _("Tur Kârı"), "Green" if totals["tur_kari"] >= 0 else "Red"),
+		card(totals["tahsil_edilen"], _("Tahsil Edilen"), "Green"),
+		card(totals["acik_alacak"], _("Açık Alacak"), "Orange"),
 	]
+	if pnl.get("genel_gider") is not None:
+		cards.append(card(pnl["genel_gider"], _("Ofis Genel Gideri"), "Grey"))
+		result = pnl["sezon_sonucu"]
+		cards.append(card(result, _("Sezon Sonucu"), "Green" if result >= 0 else "Red"))
+	return cards
+
+
+def _warnings_message(pnl: dict) -> str | None:
+	if not pnl["warnings"]:
+		return None
+	items = "".join(
+		f"<li><b>{escape_html(str(w['count']))}</b> {escape_html(_('rezervasyon'))}: {escape_html(w['message'])}"
+		+ (f" ({escape_html(', '.join(f'{k}: {v}' for k, v in w['details'].items()))})" if w["details"] else "")
+		+ "</li>"
+		for w in pnl["warnings"]
+	)
+	return f"<div class='alert alert-warning'><ul style='margin:0'>{items}</ul></div>"

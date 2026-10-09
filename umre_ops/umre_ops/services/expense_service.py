@@ -2,10 +2,14 @@
 # For license information, please see license.txt
 """Operational expense reporting service.
 
-This module is intentionally separate from the tour cost dashboard. Tour
-revenue/cost logic stays in ``dashboard_service.get_tour_cost_breakdown``;
-season/company expenses are aggregated here from ``Operational Expense`` rows.
-Only rows with ``status = 'Confirmed'`` are reportable.
+This module is intentionally separate from the tour P&L (``pnl_service``).
+``Operational Expense`` rows have two scopes:
+
+* ``related_tour`` empty  -> office overhead of the season (never allocated to tours)
+* ``related_tour`` set    -> an in-umrah extra expense of that tour (counted in its tour profit)
+
+The dashboard aggregates overhead by default and one tour's extras when a tour
+filter is given. Only rows with ``status = 'Confirmed'`` are reportable.
 """
 from __future__ import annotations
 
@@ -78,10 +82,21 @@ def _filters_with_active_season(filters: dict[str, Any] | str | None = None) -> 
 	return filters
 
 
-def _where_clause(filters: dict[str, Any] | str | None = None) -> tuple[str, dict[str, Any]]:
+def _scope_condition(filters: dict[str, Any], params: dict[str, Any]) -> str:
+	"""Tour filter -> that tour's extra expenses; no tour -> office overhead only."""
+	if filters.get("tour"):
+		params["tour"] = filters["tour"]
+		return "oe.related_tour = %(tour)s"
+	return "COALESCE(oe.related_tour, '') = ''"
+
+
+def _where_clause(
+	filters: dict[str, Any] | str | None = None, *, status: str = "Confirmed"
+) -> tuple[str, dict[str, Any]]:
 	filters = _filters_with_active_season(filters)
 	conditions = ["oe.status = %(status)s"]
-	params: dict[str, Any] = {"status": "Confirmed"}
+	params: dict[str, Any] = {"status": status}
+	conditions.append(_scope_condition(filters, params))
 
 	if filters.get("season"):
 		conditions.append("oe.season = %(season)s")
@@ -121,6 +136,9 @@ def _entry_where_clause(filters: dict[str, Any] | str | None = None) -> tuple[st
 	if filters.get("status"):
 		conditions.append("oe.status = %(status)s")
 		params["status"] = filters["status"]
+	if filters.get("tour"):
+		conditions.append("oe.related_tour = %(tour)s")
+		params["tour"] = filters["tour"]
 	expense_category = filters.get("expense_category") or filters.get("category")
 	if expense_category:
 		conditions.append("oe.expense_category = %(expense_category)s")
@@ -144,6 +162,8 @@ def _entry_where_clause(filters: dict[str, Any] | str | None = None) -> tuple[st
 def _empty_summary() -> dict[str, Any]:
 	return {
 		"active_season": get_active_season(),
+		"scope": "overhead",
+		"draft_count": 0,
 		"total_expense_usd": 0.0,
 		"by_main_category": [],
 		"by_expense_item": [],
@@ -449,6 +469,8 @@ def get_operational_dashboard_summary(filters: dict[str, Any] | str | None = Non
 
 	return {
 		"active_season": effective_filters.get("season"),
+		"scope": "tour" if effective_filters.get("tour") else "overhead",
+		"draft_count": _draft_count(effective_filters),
 		"total_expense_usd": get_operational_expense_summary(effective_filters)["total_expense_usd"],
 		"by_main_category": get_expense_breakdown_by_category(effective_filters),
 		"by_expense_item": get_expense_breakdown_by_item(effective_filters),
@@ -456,19 +478,17 @@ def get_operational_dashboard_summary(filters: dict[str, Any] | str | None = Non
 	}
 
 
+def _draft_count(filters: dict[str, Any]) -> int:
+	"""Draft rows in the same scope: shown so users know why a total looks low."""
+	if not _has_operational_expense_doctype():
+		return 0
+	where, params = _where_clause(filters, status="Draft")
+	row = frappe.db.sql(f"SELECT COUNT(*) FROM `tabOperational Expense` oe WHERE {where}", params)
+	return int(row[0][0]) if row else 0
+
+
 @frappe.whitelist()
 def get_operational_dashboard_data(filters: dict[str, Any] | str | None = None) -> dict[str, Any]:
-	"""Combined endpoint for the full Umre dashboard.
-
-	The tour dashboard is delegated to the existing service without changing its
-	revenue or cost aggregation logic.
-	"""
-	from umre_ops.umre_ops.services.dashboard_service import get_tour_cost_breakdown
-
+	"""Season overhead (or one tour's extras) panel, independent from the tour P&L."""
 	require_doctype_permission("Operational Expense", "read")
-	filters = normalize_filters(filters)
-	tour = filters.get("tour")
-	return {
-		"tour_dashboard": get_tour_cost_breakdown(season=filters.get("season"), tour=tour),
-		"operational_dashboard": get_operational_dashboard_summary(filters),
-	}
+	return {"operational_dashboard": get_operational_dashboard_summary(normalize_filters(filters))}

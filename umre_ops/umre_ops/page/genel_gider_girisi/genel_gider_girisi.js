@@ -41,7 +41,8 @@ class GenelGiderGirisi {
 		]).then(([taxonomy_response, active_response, seasons_response]) => {
 			this.taxonomy = taxonomy_response.message || [];
 			this.active_season = active_response.message || null;
-			this.selected_season = this.active_season;
+			// Keep the user's season choice when the page reloads (e.g. after adding an item).
+			this.selected_season = this.selected_season || this.active_season;
 			this.seasons = seasons_response.message || [];
 			this.render();
 		}).catch((err) => {
