@@ -1,4 +1,6 @@
-// Operational Expense — USD önizleme (kayıt sunucuda validate ile kesinleşir)
+// Operational Expense — USD önizleme (kayıt sunucuda validate ile kesinleşir).
+// Kur boşsa sunucu ERPNext kurunu (SAR sabit 3,75; TRY ECB) kendisi doldurur;
+// form yalnızca değişiklik anında otomatik kuru önceden gösterir.
 frappe.ui.form.on("Operational Expense", {
 	setup(frm) {
 		frm.set_query("expense_category", function () {
@@ -15,29 +17,52 @@ frappe.ui.form.on("Operational Expense", {
 		preview_usd(frm);
 	},
 	currency(frm) {
-		preview_usd(frm);
+		reset_rate_and_fetch(frm);
+	},
+	expense_date(frm) {
+		if (frm.doc.kur_kaynagi !== "Manuel") reset_rate_and_fetch(frm);
 	},
 	money_account(frm) {
 		if (frm.doc.money_account) {
 			frappe.db.get_value("Umre Money Account", frm.doc.money_account, ["currency", "institution"], (r) => {
 				if (r) {
-					frm.set_value("currency", r.currency);
 					frm.set_value("financial_institution", r.institution);
-					preview_usd(frm);
+					if (r.currency !== frm.doc.currency) {
+						frm.set_value("currency", r.currency);
+					}
 				}
 			});
 		} else {
 			frm.set_value("currency", "");
 			frm.set_value("financial_institution", "");
-			preview_usd(frm);
 		}
 	},
 	refresh(frm) {
 		default_active_season(frm);
-		preview_usd(frm);
 		configure_receipt_attachment(frm);
 	},
 });
+
+function reset_rate_and_fetch(frm) {
+	const cur = (frm.doc.currency || "").toString().toUpperCase();
+	if (!cur) return;
+	if (cur === "USD") {
+		frm.set_value("usd_exchange_rate", 1);
+		preview_usd(frm);
+		return;
+	}
+	frappe.call({
+		method: "umre_ops.umre_ops.services.fx_service.get_usd_rate",
+		args: { currency: cur, on_date: frm.doc.expense_date || frappe.datetime.get_today() },
+	}).then((r) => {
+		const out = r && r.message;
+		if (out && out.currency === (frm.doc.currency || "").toUpperCase()) {
+			frm.set_value("usd_exchange_rate", out.rate);
+			frm.set_value("kur_kaynagi", out.source);
+			preview_usd(frm);
+		}
+	});
+}
 
 function default_active_season(frm) {
 	if (!frm.is_new() || frm.doc.season) return;
@@ -50,24 +75,14 @@ function default_active_season(frm) {
 	});
 }
 
+// Read-only preview of the server formula (usd_amount = amount ÷ rate), rounded like the server.
 function preview_usd(frm) {
 	const cur = (frm.doc.currency || "").toString().toUpperCase();
 	const amt = frappe.utils.flt(frm.doc.amount);
-	if (cur === "USD") {
-		frm.set_value("usd_exchange_rate", 1);
-		frm.set_value("usd_amount", amt);
-		return;
-	}
-	if (frm.doc.usd_exchange_rate === 1) {
-		frm.set_value("usd_exchange_rate", "");
-		frm.set_value("usd_amount", 0);
-		return;
-	}
-	const rate = frappe.utils.flt(frm.doc.usd_exchange_rate);
-	if (rate > 0) {
-		frm.set_value("usd_amount", amt / rate);
-	} else {
-		frm.set_value("usd_amount", 0);
+	const rate = cur === "USD" ? 1 : frappe.utils.flt(frm.doc.usd_exchange_rate);
+	const usd = rate > 0 ? frappe.utils.flt(amt / rate, 2) : 0;
+	if (frappe.utils.flt(frm.doc.usd_amount, 2) !== usd) {
+		frm.set_value("usd_amount", usd);
 	}
 }
 

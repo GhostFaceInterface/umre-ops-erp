@@ -13,6 +13,7 @@
   "gece_sayisi",
   "birim_fiyat_sar",
   "kur",
+  "kur_kaynagi",
   "toplam_oda_maliyeti_usd",
   "bir_kisilik_oda_maaliyeti",
   "iki_kisilik_oda_maliyeti",
@@ -61,21 +62,21 @@
    "reqd": 1
   },
   {
+   "default": "SAR",
    "fieldname": "sar_currency",
    "fieldtype": "Link",
+   "hidden": 1,
    "label": "SAR Para Birimi",
    "options": "Currency",
-   "default": "SAR",
-   "hidden": 1,
    "read_only": 1
   },
   {
+   "default": "USD",
    "fieldname": "usd_currency",
    "fieldtype": "Link",
+   "hidden": 1,
    "label": "USD Para Birimi",
    "options": "Currency",
-   "default": "USD",
-   "hidden": 1,
    "read_only": 1
   },
   {
@@ -84,16 +85,22 @@
    "in_list_view": 1,
    "label": "Birim Fiyat SAR",
    "non_negative": 1,
-   "reqd": 1,
-   "options": "sar_currency"
+   "options": "sar_currency",
+   "reqd": 1
   },
   {
+   "description": "Boş bırakılırsa ERPNext sabit kurundan (SAR 3,75) otomatik doldurulur. 1 USD karşılığı SAR; USD maliyet = SAR toplamı ÷ kur.",
    "fieldname": "kur",
    "fieldtype": "Float",
-   "description": "1 USD karşılığı SAR tutarıdır; USD maliyet = SAR toplamı ÷ kur.",
    "label": "SAR / USD Kuru",
-   "non_negative": 1,
-   "reqd": 1
+   "non_negative": 1
+  },
+  {
+   "fieldname": "kur_kaynagi",
+   "fieldtype": "Data",
+   "label": "Kur Kaynağı",
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "fieldname": "toplam_oda_maliyeti_usd",
@@ -139,7 +146,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-04-23 12:00:00.000000",
+ "modified": "2026-10-09 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Umre Ops",
  "name": "Tour Hotel Cost Rule",

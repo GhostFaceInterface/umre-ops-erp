@@ -8,6 +8,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt
 
+from umre_ops.umre_ops.services.fx_service import fill_rate
 from umre_ops.umre_ops.services.season_service import apply_active_season
 
 
@@ -21,19 +22,41 @@ class OperationalExpense(Document):
 		self._sync_money_currency()
 		self._sync_legacy_category()
 		self._validate_expense_category()
+		self._validate_related_tour()
 		self._enforce_amount_rules()
 		self._calc_usd()
 		self._validate_receipt_attachment()
 
 	def _sync_money_currency(self) -> None:
-		if self.money_account:
-			cur, institution = frappe.db.get_value(
-				"Umre Money Account", self.money_account, ["currency", "institution"]
-			) or (None, None)
-			if cur:
-				self.currency = cur
-			if institution:
-				self.financial_institution = institution
+		"""Take currency from the money account when the account is chosen or changed.
+
+		An existing expense keeps the currency it was entered in, even if the
+		account's currency is edited later.
+		"""
+		if not self.money_account:
+			return
+		if not self.is_new() and not self.has_value_changed("money_account") and self.currency:
+			return
+		cur, institution = frappe.db.get_value(
+			"Umre Money Account", self.money_account, ["currency", "institution"]
+		) or (None, None)
+		if cur and cur != self.currency:
+			self.currency = cur
+			if not self.has_value_changed("usd_exchange_rate") or self.is_new():
+				# A rate typed for the previous currency is meaningless now.
+				self.usd_exchange_rate = 0
+		if institution:
+			self.financial_institution = institution
+
+	def _validate_related_tour(self) -> None:
+		"""`related_tour` set = in-umrah tour expense; empty = office overhead."""
+		if not self.get("related_tour"):
+			return
+		tour_season = frappe.db.get_value("Umre Tour", self.related_tour, "season")
+		if tour_season and self.season and tour_season != self.season:
+			frappe.throw(
+				_("Tura ait gider, turun sezonuna ({0}) kaydedilmelidir.").format(tour_season)
+			)
 
 	def _sync_legacy_category(self) -> None:
 		if self.get("category") and not self.get("expense_category"):
@@ -71,19 +94,19 @@ class OperationalExpense(Document):
 			return
 		if cur == "USD":
 			self.usd_exchange_rate = 1.0
+			self.kur_kaynagi = "USD"
 			self.usd_amount = flt(amt, 2)
 			return
 
-		rate = flt(self.usd_exchange_rate)
-		if rate <= 0:
-			frappe.throw(
-				_(
-					"USD kur alanı zorunludur ({0}). Kullanıcılar tutar ile USD arasındaki "
-					"çarpanı işler: USD = Tutar ÷ Kur (örneğin 1 USD karşılığı kaç TRY)."
-				).format(cur)
-			)
-
-		self.usd_amount = flt(amt / rate, 2)
+		# Empty rate -> ERPNext rate of the expense date; a typed rate is checked
+		# against it (inverted rates such as 0.024 TRY are rejected). An untouched
+		# saved expense is not re-validated, so it can still be cancelled.
+		unchanged = not self.is_new() and not any(
+			self.has_value_changed(f) for f in ("amount", "currency", "usd_exchange_rate", "expense_date")
+		)
+		if not (unchanged and flt(self.usd_exchange_rate) > 0):
+			fill_rate(self, currency=cur, rate_field="usd_exchange_rate", on_date=self.expense_date)
+		self.usd_amount = flt(amt / flt(self.usd_exchange_rate), 2)
 
 	def _validate_receipt_attachment(self) -> None:
 		if not self.receipt_attachment:

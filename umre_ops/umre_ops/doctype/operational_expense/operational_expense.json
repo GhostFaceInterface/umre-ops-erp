@@ -19,6 +19,7 @@
   "amount_section",
   "amount",
   "usd_exchange_rate",
+  "kur_kaynagi",
   "usd_currency",
   "usd_amount",
   "description",
@@ -116,10 +117,17 @@
   },
   {
    "depends_on": "eval: doc.currency && doc.currency != \"USD\"",
-   "description": "Tutarı USD karşılığına bölmek için kullanılacak pozitif katsayı (usd_amount = tutar ÷ kur). Örn. TRY: 1 USD = X TRY ise X girin.",
+   "description": "Boş bırakılırsa gider tarihindeki kur ERPNext'ten otomatik alınır (SAR sabit 3,75; TRY ECB). 1 USD = X döviz; usd_amount = tutar ÷ kur.",
    "fieldname": "usd_exchange_rate",
    "fieldtype": "Float",
    "label": "USD Kuru"
+  },
+  {
+   "fieldname": "kur_kaynagi",
+   "fieldtype": "Data",
+   "label": "Kur Kaynağı",
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "default": "USD",
@@ -143,10 +151,10 @@
    "label": "Açıklama"
   },
   {
+   "description": "PDF veya resim dosyası yükleyin: pdf, jpg, jpeg, png, webp.",
    "fieldname": "receipt_attachment",
    "fieldtype": "Attach",
-   "label": "Belge / Dekont",
-   "description": "PDF veya resim dosyası yükleyin: pdf, jpg, jpeg, png, webp."
+   "label": "Belge / Dekont"
   },
   {
    "fieldname": "related_tour",
@@ -159,7 +167,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 0,
  "links": [],
- "modified": "2026-04-28 00:00:00.000000",
+ "modified": "2026-10-09 12:00:00.000000",
  "module": "Umre Ops",
  "name": "Operational Expense",
  "owner": "Administrator",

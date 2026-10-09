@@ -11,6 +11,7 @@
   "medine_price_sar",
   "col_br_1",
   "sar_to_usd_rate",
+  "kur_kaynagi",
   "sar_currency"
  ],
  "fields": [
@@ -37,14 +38,14 @@
    "default": "0",
    "fieldname": "mekke_price_sar",
    "fieldtype": "Currency",
-   "label": "Mekke G\u00fcnl\u00fck (SAR)",
+   "label": "Mekke Günlük (SAR)",
    "options": "sar_currency"
   },
   {
    "default": "0",
    "fieldname": "medine_price_sar",
    "fieldtype": "Currency",
-   "label": "Medine G\u00fcnl\u00fck (SAR)",
+   "label": "Medine Günlük (SAR)",
    "options": "sar_currency"
   },
   {
@@ -52,13 +53,19 @@
    "fieldtype": "Column Break"
   },
   {
-   "default": "3.75",
-   "description": "1 USD kar\u015f\u0131l\u0131\u011f\u0131 SAR tutar\u0131d\u0131r; otel geceleriyle hesaplanan SAR toplam\u0131 bu de\u011fere b\u00f6l\u00fcn\u00fcr.",
+   "description": "Boş bırakılırsa ERPNext sabit kurundan (SAR 3,75) otomatik doldurulur. 1 USD karşılığı SAR; otel geceleriyle hesaplanan SAR toplamı bu değere bölünür.",
    "fieldname": "sar_to_usd_rate",
    "fieldtype": "Float",
    "label": "SAR / USD Kuru",
    "non_negative": 1,
    "precision": "6"
+  },
+  {
+   "fieldname": "kur_kaynagi",
+   "fieldtype": "Data",
+   "label": "Kur Kaynağı",
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "default": "SAR",
@@ -73,6 +80,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
+ "modified": "2026-10-09 12:00:00.000000",
  "module": "Umre Ops",
  "name": "Meal Cost Rule",
  "naming_rule": "By fieldname",

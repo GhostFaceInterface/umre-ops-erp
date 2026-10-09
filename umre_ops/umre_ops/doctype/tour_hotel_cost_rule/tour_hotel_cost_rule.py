@@ -1,8 +1,10 @@
 # Copyright (c) 2026, Sermed Turizm and contributors
 # For license information, please see license.txt
 
+import frappe
 from frappe.model.document import Document
 
+from umre_ops.umre_ops.services.fx_service import fill_rate
 from umre_ops.umre_ops.services.season_service import apply_tour_season
 from umre_ops.umre_ops.services.tour_cost_rule_service import apply_tour_hotel_rule_derived_fields
 
@@ -10,6 +12,12 @@ from umre_ops.umre_ops.services.tour_cost_rule_service import apply_tour_hotel_r
 class TourHotelCostRule(Document):
 	def validate(self) -> None:
 		apply_tour_season(self, tour_fieldname="tur")
+		fill_rate(
+			self,
+			currency="SAR",
+			rate_field="kur",
+			on_date=frappe.db.get_value("Umre Tour", self.tur, "baslangic_tarihi"),
+		)
 		if not getattr(self, "flags", None) or not self.flags.get("ignore_hotel_recalc"):
 			apply_tour_hotel_rule_derived_fields(self)
 
