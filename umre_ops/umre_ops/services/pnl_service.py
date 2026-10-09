@@ -21,8 +21,10 @@ Season:
                         or related_tour is a cancelled tour — a real cost with no tour profit)
     sezon sonucu      = Σ tur kârı − genel gider
 
-Collections are per booking: açık alacak = max(ucret − odenen, 0); an
-overpayment is reported separately and never offsets another passenger's debt.
+Collections are per booking: açık alacak = max(ucret − kms − odenen, 0). The
+commission is paid to the agent by the office, so the passenger owes the net
+price. An overpayment is reported separately and never offsets another
+passenger's debt.
 """
 from __future__ import annotations
 
@@ -166,8 +168,9 @@ def build_pnl(
 			row["maliyet_by_type"][code] = row["maliyet_by_type"].get(code, 0.0) + amount
 		row["tahsil_edilen"] += paid
 		row["excel_bildirilen"] += flt(booking.get("bildirilen_odenen")) if is_paying else 0.0
-		row["acik_alacak"] += max(ucret - paid, 0.0)
-		row["fazla_odeme"] += max(paid - ucret, 0.0)
+		due = ucret - kms
+		row["acik_alacak"] += max(due - paid, 0.0)
+		row["fazla_odeme"] += max(paid - due, 0.0)
 
 		status_row = row["by_status"].setdefault(statu, {"kisi_sayisi": 0, "net_satis": 0.0, "maliyet": 0.0})
 		status_row["kisi_sayisi"] += 1

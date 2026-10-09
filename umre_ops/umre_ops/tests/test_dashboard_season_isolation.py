@@ -44,7 +44,7 @@ class TestDashboardPayload(TestCase):
 		self.assertEqual(colours["HOTEL"], dashboard_service.CHART_HEX_BY_CODE["HOTEL"])
 		self.assertEqual(colours["MEAL"], dashboard_service.CHART_HEX_BY_CODE["MEAL"])
 		self.assertEqual(payload["performance"]["profit_per_paying_passenger"], 500)
-		self.assertEqual(payload["collections"]["open_receivable"], 300)
+		self.assertEqual(payload["collections"]["open_receivable"], 250)  # 1300 − 50 KMS − 1000
 		self.assertTrue(payload["financial_data_valid"])
 
 

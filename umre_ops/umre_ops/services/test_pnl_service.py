@@ -77,8 +77,14 @@ class TestBuildPnl(TestCase):
 		row = self.pnl()["tours"][0]
 		self.assertEqual(row["tahsil_edilen"], 2800)
 		self.assertEqual(row["acik_alacak"], 0)
-		self.assertEqual(row["fazla_odeme"], 200)
+		self.assertEqual(row["fazla_odeme"], 250)  # B1 owed 1300 − 50 KMS, paid 1300
 		self.assertEqual(row["excel_bildirilen"], 1300)
+
+	def test_commission_reduces_receivable(self) -> None:
+		self.bookings = [booking("B1", kms=50, odenen=1000), booking("B2", odenen=1300)]
+		row = self.pnl()["tours"][0]
+		self.assertEqual(row["acik_alacak"], 250)  # 1300 − 50 − 1000
+		self.assertEqual(row["fazla_odeme"], 0)
 
 	def test_status_rows_sum_to_tour(self) -> None:
 		row = self.pnl()["tours"][0]

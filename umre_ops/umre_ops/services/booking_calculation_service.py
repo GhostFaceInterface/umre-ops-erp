@@ -127,7 +127,7 @@ class BookingCalculationService:
 			"toplam_maliyet": cost,
 			"net_kar": flt(net_revenue - cost),
 			"odenen": paid,
-			"kalan_alacak": flt(max(revenue - paid, 0.0)),
+			"kalan_alacak": flt(max(net_revenue - paid, 0.0)),
 			"issues": issues,
 		}
 
