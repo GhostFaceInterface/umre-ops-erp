@@ -76,7 +76,7 @@ def validate_financial_integrity(
 
 	bookings = frappe.db.sql(
 		"""
-		SELECT b.name, b.statu, b.ucret, b.manual_cost, b.cost_policy,
+		SELECT b.name, b.statu, b.ucret, b.manual_cost, b.cost_policy, b.yolcu_tipi,
 		       b.locked_financials, b.is_imported, u.tc_kimlik AS tc
 		FROM `tabUmre Booking` b
 		LEFT JOIN `tabUmreci` u ON u.name = b.umreci
@@ -157,7 +157,7 @@ def validate_financial_integrity(
 	for b in bookings:
 		current = comps_by_booking.get(b["name"], {})
 		required = required_system_types_for_booking(
-			tour, b.get("statu") or "", b.get("cost_policy")
+			tour, b.get("statu") or "", b.get("cost_policy"), b.get("yolcu_tipi")
 		)
 		lacks = [t for t in required if t not in current]
 		if lacks:

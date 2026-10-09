@@ -1,20 +1,15 @@
 # Copyright (c) 2026, Sermed Turizm and contributors
 # For license information, please see license.txt
 """
-Data fix: `Tour Diyanet Card Rule` defaults `para_birimi` to USD. When the
-linked `Umre Tour` uses a different currency, the cost engine refuses to
-emit DIYANET (single-currency per booking) and the tour recompute can fail
-or leave stale component rows. Align rule currency to the tour, then
-operators should run a full recompute (``recompute_tour_bookings`` / desk).
+Retired data fix.
+
+It used to align `Tour Diyanet Card Rule.para_birimi` with the tour currency.
+Every cost rule now forces USD on validate (`tour_diyanet_card_rule.py`) and
+`normalize_cost_rule_usd_contract` enforces the USD contract, so there is
+nothing left to align. Kept as a no-op because it is listed in patches.txt.
 """
 from __future__ import annotations
 
-import frappe
-
-from umre_ops.umre_ops.services.cost_engine import sync_tour_diyanet_rule_currencies_from_tour
-
 
 def execute() -> None:
-	# No inline commit: migration run commits the patch transaction
-	out = sync_tour_diyanet_rule_currencies_from_tour(commit=False)
-	print(f"[sync_tour_diyanet_rule_para_birimi] {out!r}")
+	return None

@@ -14,7 +14,9 @@ class TourHotelCostRule(Document):
 			apply_tour_hotel_rule_derived_fields(self)
 
 	def on_update(self) -> None:
-		_schedule(self.tur)
+		from umre_ops.umre_ops.services.cost_engine import schedule_recompute_for_rule
+
+		schedule_recompute_for_rule(self)
 
 	def on_trash(self) -> None:
 		_schedule(self.tur)

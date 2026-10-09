@@ -11,9 +11,34 @@ frappe.ui.form.on("Umre Tour", {
 			);
 			return;
 		}
+		frm.add_custom_button(__("Maliyetleri yeniden hesapla"), () => recompute_tour_costs(frm));
 		load_tour_roster(frm);
 	},
 });
+
+function recompute_tour_costs(frm) {
+	frappe.confirm(
+		__("Bu turdaki tüm rezervasyonların sistem maliyetleri güncel kurallara göre yeniden hesaplanacak. Muhasebeleşmiş rezervasyonlar atlanır. Devam edilsin mi?"),
+		async () => {
+			const r = await frappe.call({
+				method: "umre_ops.umre_ops.services.cost_engine.recompute_components_for_tour",
+				args: { tour: frm.doc.name },
+				freeze: true,
+				freeze_message: __("Maliyetler yeniden hesaplanıyor..."),
+			});
+			const out = r.message || {};
+			const errors = (out.errors || []).length;
+			frappe.msgprint(
+				__("{0} rezervasyon yeniden hesaplandı, {1} muhasebeleşmiş rezervasyon atlandı, {2} hata.", [
+					out.recomputed || 0,
+					(out.skipped_posted || []).length,
+					errors,
+				])
+			);
+			load_tour_roster(frm);
+		}
+	);
+}
 
 async function load_tour_roster(frm) {
 	const $wrapper = frm.get_field("tur_detayi_html").$wrapper;

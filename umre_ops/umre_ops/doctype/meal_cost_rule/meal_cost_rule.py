@@ -22,7 +22,9 @@ class MealCostRule(Document):
 			frappe.throw(_("Yemek maliyeti için SAR/USD kuru pozitif olmalıdır."))
 
 	def on_update(self) -> None:
-		_schedule(self.tour)
+		from umre_ops.umre_ops.services.cost_engine import schedule_recompute_for_rule
+
+		schedule_recompute_for_rule(self)
 
 	def on_trash(self) -> None:
 		_schedule(self.tour)

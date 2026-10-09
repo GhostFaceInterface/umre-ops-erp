@@ -858,6 +858,8 @@ def _process_row(
 		if existing_booking:
 			_apply_booking_fields(booking, normalized, referral)
 			booking.flags.ignore_financial_lock = True
+			# Recomputed explicitly below (always, even when only `ucret` changed).
+			booking.flags.skip_cost_recompute = True
 			booking.save()
 			cost_engine.recompute_components(booking, skip_dashboard_publish=True)
 			summary.updated_bookings += 1

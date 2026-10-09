@@ -5,71 +5,30 @@ Read-only financial view for `Umre Booking`.
 
 DESIGN INTENT
 -------------
-This module USED to mutate `Umre Booking` rows on every save: rewriting `ucret`
-from the tour's room price, recomputing `otel_maliyeti` / `ucak_maliyeti` /
-`vize_maliyeti` / `diyanet_maliyeti` / `toplam_maliyet` / `kar`, and even
-zeroing `ucret` for non-paying participants. That mutation pipeline was the
-root cause of two distinct revenue-drift bugs (status flips and `ucret`
-overwrites) confirmed in forensic reports. It has been REMOVED.
+The booking is the *imported truth*. Its financial inputs (`statu`, `ucret`,
+`kms`, `manual_cost`) are locked after import (`Umre Booking.locked_financials`).
 
-The new contract is:
+This service NEVER writes financial fields. It only:
+  - sets `vize_tipi` to its UI default if missing;
+  - infers `yolcu_tipi` from `Umreci.dogum_tarihi` and the tour start date when
+    it is empty or when the booking's passenger / tour changes.
 
-* The booking is the *imported truth*. Its three financial inputs
-  (`statu`, `ucret`, `manual_cost`) are immutable after import (gated by
-  `Umre Booking.locked_financials` and the document-level guard).
-* This service NEVER writes to financial fields. It only:
-    - Sets `vize_tipi` to its UI default if missing.
-    - Infers `yolcu_tipi` from `Umreci.dogum_tarihi` once when empty.
-* All revenue / cost / profit numbers are derived on demand by
-  `BookingCalculationService.compute_view(doc)`, which returns a snapshot
-  dict and DOES NOT touch `doc`. The Tour Revenue Summary report and the
-  desk preview API are the only consumers of this snapshot.
-
-If you need to "save the totals" again, do it in an explicit, audited path
-(a manual recompute action). Do NOT add it to validate().
+Revenue / cost / profit for a single booking are derived on demand by
+`BookingCalculationService.compute_view(doc)`, using the same pure function as
+the persisted cost components (`cost_engine.compute_cost_lines`), so the desk
+preview, the persisted components and the reports agree.
 """
 from __future__ import annotations
 
-import re
 from datetime import date
 from typing import Any
 
 import frappe
-from frappe.utils import flt, getdate
+from frappe.utils import cint, flt, getdate
 
-PAYING_STATUS = "UMRECI"
+from umre_ops.umre_ops.services import cost_engine
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _parse_oda_index(oda_tipi: str | None) -> int:
-	if not oda_tipi:
-		return 1
-	m = re.match(r"^(\d+)", str(oda_tipi).strip())
-	if m:
-		n = int(m.group(1))
-		return min(max(n, 1), 4)
-	return 1
-
-
-def _tour_field_for_oda(idx: int) -> str:
-	return {
-		1: "bir_kisilik_oda",
-		2: "iki_kisilik_oda",
-		3: "uc_kisilik_oda",
-		4: "dort_kisilik_oda",
-	}[idx]
-
-
-def _rule_field_for_oda_maaliyet(idx: int) -> str:
-	return {
-		1: "bir_kisilik_oda_maaliyeti",
-		2: "iki_kisilik_oda_maliyeti",
-		3: "uc_kisilik_oda_maliyeti",
-		4: "dort_kisilik_oda_maliyeti",
-	}[idx]
+PAYING_STATUS = cost_engine.PAYING_STATUS
 
 
 def _age_on_date(birth: date, on: date) -> int:
@@ -79,14 +38,7 @@ def _age_on_date(birth: date, on: date) -> int:
 	return years
 
 
-def infer_yolcu_tipi_from_umreci(umreci_name: str | None, tour_start: date | None) -> str | None:
-	if not (umreci_name and tour_start):
-		return None
-	ur = frappe.db.get_value("Umreci", umreci_name, ["dogum_tarihi"], as_dict=True)
-	if not ur or not ur.get("dogum_tarihi"):
-		return None
-	bd = getdate(ur["dogum_tarihi"])
-	age = _age_on_date(bd, tour_start)
+def passenger_type_for_age(age: int) -> str:
 	if age < 2:
 		return "Bebek"
 	if age < 12:
@@ -94,69 +46,21 @@ def infer_yolcu_tipi_from_umreci(umreci_name: str | None, tour_start: date | Non
 	return "Normal"
 
 
-# ---------------------------------------------------------------------------
-# Pure cost lookups (read-only)
-# ---------------------------------------------------------------------------
-
-def _tour_doc(tur: str | None):
-	if not tur or not frappe.db.exists("Umre Tour", tur):
+def infer_yolcu_tipi_from_umreci(umreci_name: str | None, tour_start: date | None) -> str | None:
+	if not (umreci_name and tour_start):
 		return None
-	return frappe.get_doc("Umre Tour", tur)
+	birth = frappe.db.get_value("Umreci", umreci_name, "dogum_tarihi")
+	if not birth:
+		return None
+	return passenger_type_for_age(_age_on_date(getdate(birth), tour_start))
 
 
-def lookup_hotel_cost(tur: str | None, oda_tipi: str | None) -> float:
+def _tour_start(tur: str | None) -> date | None:
 	if not tur:
-		return 0.0
-	idx = _parse_oda_index(oda_tipi)
-	field = _rule_field_for_oda_maaliyet(idx)
-	rules = frappe.get_all("Tour Hotel Cost Rule", filters={"tur": tur}, pluck="name")
-	total = 0.0
-	for rname in rules:
-		row = frappe.db.get_value("Tour Hotel Cost Rule", rname, [field], as_dict=True)
-		if row and row.get(field) is not None:
-			total += flt(row[field])
-	return flt(total)
+		return None
+	start = frappe.db.get_value("Umre Tour", tur, "baslangic_tarihi")
+	return getdate(start) if start else None
 
-
-def lookup_flight_cost(tur: str | None, yolcu_tipi: str | None) -> float:
-	if not (tur and yolcu_tipi):
-		return 0.0
-	name = frappe.db.get_value(
-		"Tour Airfare Cost Rule",
-		{"tur": tur, "yolcu_tipi": yolcu_tipi},
-		"name",
-	)
-	if not name:
-		return 0.0
-	return flt(frappe.db.get_value("Tour Airfare Cost Rule", name, "tutar") or 0)
-
-
-def lookup_visa_cost(tur: str | None, vize_tipi: str | None) -> float:
-	if not (tur and vize_tipi):
-		return 0.0
-	name = frappe.db.get_value(
-		"Tour Visa Cost Rule",
-		{"tur": tur, "vize_tipi": vize_tipi},
-		"name",
-	)
-	if not name:
-		return 0.0
-	return flt(frappe.db.get_value("Tour Visa Cost Rule", name, "tutar") or 0)
-
-
-def lookup_diyanet_cost(tur: str | None, _diyanet_kart_var: int | None = None) -> float:
-	"""Tour `Tour Diyanet Card Rule` sets tutar. The booking checkbox is not a gate (legacy bug)."""
-	if not tur:
-		return 0.0
-	name = frappe.db.get_value("Tour Diyanet Card Rule", {"tur": tur}, "name")
-	if not name:
-		return 0.0
-	return flt(frappe.db.get_value("Tour Diyanet Card Rule", name, "tutar") or 0)
-
-
-# ---------------------------------------------------------------------------
-# Read-only service
-# ---------------------------------------------------------------------------
 
 class BookingCalculationService:
 	"""Soft passenger-default applier (read-only for finance)."""
@@ -166,79 +70,91 @@ class BookingCalculationService:
 	def __init__(self, doc: Any):
 		self.doc = doc
 
-	# Mutation surface — strictly limited to non-financial UI defaults.
 	def apply(self) -> None:
-		"""Set safe, non-financial defaults. NEVER touches statu/ucret/cost.
-
-		Mutated fields (UI defaults only):
-			- vize_tipi (default "Umre" when empty)
-			- yolcu_tipi (inferred once from Umreci birth date when empty)
-		"""
-		self._apply_passenger_defaults()
-
-	def _apply_passenger_defaults(self) -> None:
+		"""Set safe, non-financial defaults. NEVER touches statu/ucret/kms/cost."""
 		if not self.doc.get("vize_tipi"):
 			self.doc.vize_tipi = "Umre"
-		if self.doc.get("yolcu_tipi") or not self.doc.get("umreci"):
+		if not self.doc.get("umreci"):
 			return
-		t = _tour_doc(self.doc.get("tur"))
-		start = getdate(t.baslangic_tarihi) if t and t.get("baslangic_tarihi") else None
-		inferred = infer_yolcu_tipi_from_umreci(self.doc.umreci, start)
+		if self.doc.get("yolcu_tipi") and not self._passenger_or_tour_changed():
+			return
+		inferred = infer_yolcu_tipi_from_umreci(self.doc.umreci, _tour_start(self.doc.get("tur")))
 		if inferred:
 			self.doc.yolcu_tipi = inferred
 
-	# Read surface — pure functions.
+	def _passenger_or_tour_changed(self) -> bool:
+		has_changed = getattr(self.doc, "has_value_changed", None)
+		is_new = getattr(self.doc, "is_new", None)
+		if not callable(has_changed) or (callable(is_new) and is_new()):
+			return False
+		return bool(has_changed("umreci") or has_changed("tur"))
+
 	@staticmethod
-	def compute_view(doc) -> dict:
-		"""Return the immutable financial view of a booking. NO mutation.
+	def compute_view(doc, ctx: cost_engine.TourCostContext | None = None) -> dict:
+		"""Return the financial view of one booking. NO mutation.
 
-		Strict business model:
-			UMRECI:     revenue = ucret
-			            cost    = hotel + flight + visa + diyanet
-			NON-UMRECI: revenue = 0
-			            cost    = manual_cost
-			profit = revenue - cost
+		UMRECI:     net revenue = ucret − kms
+		NON-UMRECI: revenue = 0
+		cost   = cost_engine lines (same function as persisted components)
+		profit = net revenue − cost
 		"""
-		statu = (doc.get("statu") or PAYING_STATUS).strip() or PAYING_STATUS
-		is_umreci = statu == PAYING_STATUS
-		tur = doc.get("tur")
-		oda_tipi = doc.get("oda_tipi")
-		yolcu_tipi = doc.get("yolcu_tipi")
-		vize_tipi = doc.get("vize_tipi")
-		diyanet_kart_var = doc.get("diyanet_kart_var")
-
-		uses_system_cost = is_umreci or doc.get("cost_policy") == "System Rules"
-		if uses_system_cost:
-			otel = lookup_hotel_cost(tur, oda_tipi)
-			ucak = lookup_flight_cost(tur, yolcu_tipi)
-			vize = lookup_visa_cost(tur, vize_tipi)
-			diy = lookup_diyanet_cost(tur, diyanet_kart_var)
-			revenue = flt(doc.get("ucret") or 0) if is_umreci else 0.0
-			cost = flt(otel + ucak + vize + diy)
-			manual = 0.0
-		else:
-			otel = 0.0
-			ucak = 0.0
-			vize = 0.0
-			diy = 0.0
-			revenue = 0.0
-			manual = flt(doc.get("manual_cost") or 0)
-			cost = manual
-
+		inputs = cost_engine.booking_cost_inputs(doc)
+		if ctx is None or ctx.tour != inputs["tur"]:
+			ctx = cost_engine.load_tour_cost_context(inputs["tur"])
+		lines, issues = cost_engine.compute_cost_lines(inputs, ctx)
+		by_type = cost_engine.summarize_lines(lines)
+		is_umreci = inputs["statu"] == PAYING_STATUS
+		cancelled = bool(inputs["iptal_edildi"])
+		revenue = flt(doc.get("ucret") or 0) if is_umreci and not cancelled else 0.0
+		kms = flt(doc.get("kms") or 0) if is_umreci and not cancelled else 0.0
+		net_revenue = flt(revenue - kms)
+		cost = flt(sum(by_type.values()))
+		paid = flt(doc.get("odenen") or 0)
 		return {
-			"statu": statu,
+			"statu": inputs["statu"],
 			"is_umreci": is_umreci,
+			"iptal_edildi": cint(cancelled),
 			"revenue": revenue,
-			"otel_maliyeti": otel,
-			"ucak_maliyeti": ucak,
-			"vize_maliyeti": vize,
-			"diyanet_maliyeti": diy,
-			"manual_cost": manual,
+			"kms": kms,
+			"net_revenue": net_revenue,
+			"otel_maliyeti": by_type.get("HOTEL", 0.0),
+			"ucak_maliyeti": by_type.get("FLIGHT", 0.0),
+			"vize_maliyeti": by_type.get("VISA", 0.0),
+			"diyanet_maliyeti": by_type.get("DIYANET", 0.0),
+			"yemek_maliyeti": by_type.get("MEAL", 0.0),
+			"diger_maliyet": by_type.get("OTHER", 0.0),
+			"manual_cost": by_type.get("MANUAL", 0.0),
 			"toplam_maliyet": cost,
-			"net_kar": flt(revenue - cost),
-			"odenen": flt(doc.get("odenen") or 0),
-			"kalan_alacak": flt(revenue - flt(doc.get("odenen") or 0)),
+			"net_kar": flt(net_revenue - cost),
+			"odenen": paid,
+			"kalan_alacak": flt(max(revenue - paid, 0.0)),
+			"issues": issues,
 		}
+
+
+def refresh_passenger_types(*, umreci: str | None = None, tur: str | None = None) -> int:
+	"""Re-infer `yolcu_tipi` after a birth date / tour start change.
+
+	Saving a booking whose type changed triggers its cost recompute
+	(`Umre Booking.on_update`). Bookings with a submitted cost posting are skipped.
+	"""
+	filters = {"umreci": umreci} if umreci else {"tur": tur}
+	if not (umreci or tur):
+		return 0
+	changed = 0
+	for row in frappe.get_all(
+		"Umre Booking", filters=filters, fields=["name", "umreci", "tur", "yolcu_tipi"], limit_page_length=0
+	):
+		inferred = infer_yolcu_tipi_from_umreci(row["umreci"], _tour_start(row["tur"]))
+		if not inferred or inferred == row.get("yolcu_tipi"):
+			continue
+		if cost_engine._has_submitted_cost_posting(row["name"]):
+			continue
+		booking = frappe.get_doc("Umre Booking", row["name"])
+		booking.yolcu_tipi = inferred
+		booking.save(ignore_permissions=True)
+		changed += 1
+	return changed
 
 
 def apply_to_booking(doc) -> None:

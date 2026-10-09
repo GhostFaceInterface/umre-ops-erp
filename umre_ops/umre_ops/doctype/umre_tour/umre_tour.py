@@ -20,6 +20,13 @@ class UmreTour(Document):
 		if not self.is_new() and self.has_value_changed("season"):
 			frappe.throw(_("Kaydedilmiş bir turun sezonu değiştirilemez."))
 
+	def on_update(self) -> None:
+		# Passenger age is measured at the tour start date.
+		if not self.flags.get("in_insert") and self.has_value_changed("baslangic_tarihi"):
+			from umre_ops.umre_ops.services.booking_calculation_service import refresh_passenger_types
+
+			refresh_passenger_types(tur=self.name)
+
 
 
 def _get_tour(tour: str, permission_type: str = "read"):

@@ -20,7 +20,7 @@ from umre_ops.umre_ops.services.booking_calculation_service import (
 
 
 class UmreBooking(Document):
-	"""Recomputes list price, cost components, totals, and margin on every save."""
+	"""Imported financial truth; cost components follow every cost-driving change."""
 
 	def validate(self) -> None:
 		self._enforce_booking_identity()
@@ -34,13 +34,37 @@ class UmreBooking(Document):
 		self._enforce_posted_payment_lock()
 
 		# 2) Pure read-only "soft defaults" (`vize_tipi`, `yolcu_tipi`). These
-		#    NEVER touch financial fields. The previous mutation chain that
-		#    silently rewrote ucret / cost columns has been removed; financial
-		#    truth now flows from Excel → import → DB → report (immutable).
+		#    NEVER touch financial fields.
 		if not getattr(self, "flags", None) or not self.flags.get("ignore_booking_recalc"):
 			apply_to_booking(self)
 
+		self._enforce_posted_cost_lock()
 		self._sync_paid_amount_from_payments()
+
+	def on_update(self) -> None:
+		"""Keep persisted cost components in step with cost-driving fields."""
+		if self.flags.get("in_insert") or self.flags.get("skip_cost_recompute"):
+			return
+		if not self._cost_drivers_changed():
+			return
+		cost_engine.recompute_components(self)
+
+	def _cost_drivers_changed(self) -> bool:
+		if self.is_new() or not self.get_doc_before_save():
+			return False
+		return any(self.has_value_changed(field) for field in cost_engine.COST_DRIVER_FIELDS)
+
+	def _enforce_posted_cost_lock(self) -> None:
+		"""A booking whose cost Journal Entry is submitted cannot change its cost drivers."""
+		if not self._cost_drivers_changed():
+			return
+		if cost_engine._has_submitted_cost_posting(self.name):
+			changed = [f for f in cost_engine.COST_DRIVER_FIELDS if self.has_value_changed(f)]
+			frappe.throw(
+				_("Maliyeti muhasebeleşmiş rezervasyonda şu alanlar değiştirilemez: {0}").format(
+					", ".join(changed)
+				)
+			)
 
 	def _enforce_booking_identity(self) -> None:
 		if not (self.get("umreci") and self.get("tur")):
@@ -286,16 +310,18 @@ def preview_calculated_fields(doc) -> dict:
 	temp = frappe.get_doc({"doctype": "Umre Booking", **data})
 	apply_to_booking(temp)
 	view = compute_booking_view(temp)
+	# Only derived values are returned; the form never writes inputs back.
 	return {
-		"statu": view["statu"],
-		"manual_cost": flt(view["manual_cost"]),
 		"yolcu_tipi": temp.get("yolcu_tipi"),
 		"vize_tipi": temp.get("vize_tipi"),
-		"ucret": flt(view["revenue"]),
 		"otel_maliyeti": flt(view["otel_maliyeti"]),
 		"ucak_maliyeti": flt(view["ucak_maliyeti"]),
 		"vize_maliyeti": flt(view["vize_maliyeti"]),
 		"diyanet_maliyeti": flt(view["diyanet_maliyeti"]),
 		"toplam_maliyet": flt(view["toplam_maliyet"]),
 		"kar": flt(view["net_kar"]),
+		"net_revenue": flt(view["net_revenue"]),
+		"yemek_maliyeti": flt(view["yemek_maliyeti"]),
+		"diger_maliyet": flt(view["diger_maliyet"]),
+		"issues": view["issues"],
 	}

@@ -46,6 +46,13 @@ class Umreci(Document):
 		if duplicate:
 			frappe.throw(_("Bu TC / Yabancı Kimlik ile başka bir Umreci kaydı zaten var."))
 
+	def on_update(self) -> None:
+		# Passenger type (Bebek/Çocuk/Normal) drives flight and hotel cost.
+		if not self.flags.get("in_insert") and self.has_value_changed("dogum_tarihi"):
+			from umre_ops.umre_ops.services.booking_calculation_service import refresh_passenger_types
+
+			refresh_passenger_types(umreci=self.name)
+
 
 @frappe.whitelist()
 def get_tour_history(umreci: str) -> list[dict]:
